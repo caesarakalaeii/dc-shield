@@ -56,7 +56,8 @@ if __name__ == '__main__':
     
     default_subdomain = config['default_server']
 
-    
     alternative_server_url = config['honeypot_server']
     
-    app.run()
+    app_port = int(config['app_port'])
+    
+    app.run(port = app_port)

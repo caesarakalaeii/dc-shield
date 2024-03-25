@@ -1,5 +1,6 @@
 {
     "default_server": "YOUR DC SERVER",
-    "honeypot_server": "YOUR HONEYPOT SER"
+    "honeypot_server": "YOUR HONEYPOT SERVER",
+    "app_port": "8080"
 
 }
