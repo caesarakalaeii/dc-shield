@@ -74,4 +74,4 @@ if __name__ == '__main__':
     app_port = int(config['app_port'])
   
     
-    app.run(port = app_port)
+    app.run(host='0.0.0.0',port = app_port)
