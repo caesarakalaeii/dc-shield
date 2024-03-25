@@ -11,17 +11,12 @@ Dependencies:
 """
 
 
-
-import os
-import geoip2.database
-import requests
 from json_handler import *
 from quart import Quart, redirect, request
 
 app = Quart(__name__)
 default_subdomain:str
 alternative_server_url:str
-reader:geoip2.database.Reader
 
 
 
@@ -37,8 +32,8 @@ async def index():
     ip_address = request.remote_addr
     try:
         # Get country code from IP address
-        response = reader.country(ip_address)
-        country_code = response.country.iso_code
+        ip_address = request.remote_addr
+        country_code = await get_country(ip_address)
 
         # Check if IP address is in Pakistan or India
         if country_code in ['PK', 'IN']:
@@ -50,31 +45,27 @@ async def index():
     default_url = f"{default_subdomain}{request.path}"
     return redirect(default_url)
 
-def download_geoip_database():
-    """Download the GeoLite2 Country database file."""
-    url = 'https://geolite.maxmind.com/download/geoip/database/GeoLite2-Country.mmdb.gz'
+async def get_country(ip_address):
+    """Retrieve country information for the given IP address."""
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        with open('GeoLite2-Country.mmdb.gz', 'wb') as f:
-            f.write(response.content)
-        return True
+        response = await request_ip_location(ip_address)
+        if response and response.get("response_code") == "200":
+            country_code = response.get("country_code2")
+            return country_code
     except Exception as e:
-        print(f"Error downloading GeoLite2 database: {e}")
-        return False
+        print(f"Error fetching country information: {e}")
+    return None
 
-def load_geoip_database():
-    """Load GeoLite2 Country database."""
-    if not os.path.exists('GeoLite2-Country.mmdb'):
-        print("Downloading GeoLite2 Country database...")
-        if not download_geoip_database():
-            print("Failed to download GeoLite2 Country database.")
-            return None
-        else:
-            print("GeoLite2 Country database downloaded successfully.")
-            os.system('gunzip GeoLite2-Country.mmdb.gz')
-    return geoip2.database.Reader('GeoLite2-Country.mmdb')
-
+async def request_ip_location(ip_address):
+    """Make a request to the IP location API."""
+    url = f"https://api.iplocation.net/?cmd=ip-country&ip={ip_address}"
+    try:
+        response = await request.get(url)
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching IP location: {e}")
+    return None
 
 
 if __name__ == '__main__':
@@ -88,11 +79,6 @@ if __name__ == '__main__':
     alternative_server_url = config['honeypot_server']
     
     app_port = int(config['app_port'])
-    
-    # Load GeoIP database
-    reader = load_geoip_database()
-    if reader == None:
-        print('Failed to load database, exiting')
-        exit()
+  
     
     app.run(port = app_port)
