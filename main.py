@@ -49,13 +49,16 @@ async def request_ip_location(ip_address):
 @app.route('/')
 async def index():
     ip_address = request.remote_addr
+    l.info(f'IP Address is: {ip_address}')
     country_code = await get_country(ip_address)
     l.info(f'Country code is: {country_code}')
-    if country_code and country_code in ['PK', 'IN', 'DE']:
+    
+    if country_code and country_code in ['PK', 'IN']:
+        l.info(f"Rediredcting to: {alternative_server_url}")
         return redirect(alternative_server_url)
+    
     else:
-        
-        print(default_server)
+        l.info(f"Rediredcting to: {default_server}")
         return redirect(default_server)
     
 
