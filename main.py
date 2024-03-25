@@ -48,8 +48,10 @@ async def request_ip_location(ip_address):
 
 @app.route('/')
 async def index():
-    ip_address = request.X_Real_IP
+    ip_address = request.headers.get('X-Real-IP')
     l.info(f'IP Address is: {ip_address}')
+    forwarded_for = request.headers.get('X-Forwarded-For')
+    l.info(f'forwarded_for is: {forwarded_for}')
     country_code = await get_country(ip_address)
     l.info(f'Country code is: {country_code}')
     
