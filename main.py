@@ -135,7 +135,21 @@ More infos: https://iplocation.com/?ip={ip_address}
                                 country_name=country_name, country_code2=country_code2, isp=isp)
     except Exception as e:
             l.error(f'{e}')
+
+@app.route('/init-bot')
+async def start_dc_bot():
+    global config, client, channel_id
+    if config['dc_logging']:
+        l.passing('Initializing DC-Bot')
+        token = config['dc_token']
+        channel_id = config['dc_channel']
+        
+        await client.start(token)
+        return
+    l.warning('DC-Bot not initialized')
     
+    return
+   
 @app.route('/<path:dc_invite>')
 async def refer(dc_invite):
     l.info('Custom route called.')
@@ -161,18 +175,8 @@ async def refer_custom(dc_invite, honeypot):
     except Exception as e:
             l.error(f'{e}')
 
-async def start_dc_bot():
-    global config, client, channel_id
+
     
-    if config['dc_logging']:
-        token = config['dc_token']
-        channel_id = config['dc_channel']
-        
-        
-        await client.start(token)
-    
-def start_bot():
-    asyncio.run(start_dc_bot())
 
 if __name__ == '__main__':
     
@@ -187,9 +191,9 @@ if __name__ == '__main__':
     
     app_port = int(config['app_port'])
     
-    bot_process = threading.Thread(target=start_bot)
+    #bot_process = threading.Thread(target=start_bot)
     
-    bot_process.start()
+    #bot_process.start()
     
     app.run(host='0.0.0.0',port = app_port)
-    bot_process.join()
+    #bot_process.join()
