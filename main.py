@@ -73,7 +73,7 @@ async def index():
     return await redirect_handler(ip_address, default_server, alternative_server_url)
     
     
-@app.route('/<path:dc_invite>')
+@app.route('/c/<path:dc_invite>')
 async def refer(dc_invite):
     l.info('Custom route called.')
     ip_address = request.headers.get('X-Real-IP')
@@ -81,7 +81,7 @@ async def refer(dc_invite):
     custom_server = f'https://discord.gg/{dc_invite}'
     return await redirect_handler(ip_address, custom_server, alternative_server_url)
     
-@app.route('/<path:dc_invite>/<path:honeypot>')
+@app.route('/c/<path:dc_invite>/<path:honeypot>')
 async def refer_custom(dc_invite, honeypot):
     l.info('Custom route called with custom honeypot.')
     ip_address = request.headers.get('X-Real-IP')
