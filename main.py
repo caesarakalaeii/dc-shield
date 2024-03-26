@@ -53,6 +53,7 @@ async def redirect_handler(ip ,normal_server, honeypot):
     #if test flag is set redirect every 2nd request to honeypot
     if test_flag:
         if redirected:
+            country_code = 'PK'
             l.info(f'Test flag, changed coutry code: {country_code}')
         else:
             l.info(f'Test flag, not changing coutry code')
