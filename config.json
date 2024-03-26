@@ -1,6 +1,5 @@
 {
-    "default_server": "YOUR DC SERVER",
-    "honeypot_server": "YOUR HONEYPOT SERVER",
-    "app_port": "8080"
-
+    "default_server": "https://discord.gg/hDqYaURwKY",
+    "honeypot_server": "https://discord.gg/qFDhuvGEtm",
+    "app_port": "8095"
 }

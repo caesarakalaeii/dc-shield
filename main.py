@@ -70,7 +70,10 @@ async def index():
     l.info('Default route called.')
     ip_address = request.headers.get('X-Real-IP')
     l.info(f'IP Address is: {ip_address}')
-    return await redirect_handler(ip_address, default_server, alternative_server_url)
+    try:
+        return await redirect_handler(ip_address, default_server, alternative_server_url)
+    except Exception as e:
+        l.error(f'{e}')
     
     
 @app.route('/c/<path:dc_invite>')
@@ -79,7 +82,10 @@ async def refer(dc_invite):
     ip_address = request.headers.get('X-Real-IP')
     l.info(f'IP Address is: {ip_address}')
     custom_server = f'https://discord.gg/{dc_invite}'
-    return await redirect_handler(ip_address, custom_server, alternative_server_url)
+    try:
+        return await redirect_handler(ip_address, custom_server, alternative_server_url)
+    except Exception as e:
+            l.error(f'{e}')
     
 @app.route('/c/<path:dc_invite>/<path:honeypot>')
 async def refer_custom(dc_invite, honeypot):
@@ -88,7 +94,10 @@ async def refer_custom(dc_invite, honeypot):
     l.info(f'IP Address is: {ip_address}')
     custom_server = f'https://discord.gg/{dc_invite}'
     custom_honeypot = f'https://discord.gg/{honeypot}'
-    return await redirect_handler(ip_address, custom_server, custom_honeypot)
+    try:
+        return await redirect_handler(ip_address, custom_server, custom_honeypot)
+    except Exception as e:
+            l.error(f'{e}')
 
 
 if __name__ == '__main__':
