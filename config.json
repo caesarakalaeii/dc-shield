@@ -1,5 +1,5 @@
 {
-    "default_server": "https://discord.gg/hDqYaURwKY",
-    "honeypot_server": "https://discord.gg/qFDhuvGEtm",
+    "default_server": "YOUR DEFAULT SERVER INVITE",
+    "honeypot_server": "YOUR DEFAULT HONEYPOT INVITE",
     "app_port": "8095"
 }
