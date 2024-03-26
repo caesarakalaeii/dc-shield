@@ -26,7 +26,10 @@ channel_id:int
 config:dict
 
 # Initialize the Discord client
-client = discord.Client()
+intents = discord.Intents.default()
+intents.message_content = True
+intents.guilds = True
+client = discord.Client(intents=intents)
 
 # Function to send a message to a specific channel
 async def send_to_channel(message):
@@ -164,6 +167,7 @@ def start_dc_bot():
     if config['dc_logging']:
         token = config['dc_token']
         channel_id = config['dc_channel']
+        
         
         client.start(token)
     
