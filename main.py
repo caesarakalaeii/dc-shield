@@ -78,7 +78,7 @@ async def index():
         l.error(f'{e}')
 
     
-@app.route('/c/<path:dc_invite>')
+@app.route('/<path:dc_invite>')
 async def refer(dc_invite):
     l.info('Custom route called.')
     ip_address = request.headers.get('X-Real-IP')
