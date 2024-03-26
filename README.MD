@@ -14,15 +14,23 @@ Also with customizable honeypot: https://dc-shield.laeii.de/your-dc-link/your-ho
    ```bash
    git clone https://github.com/caesarakalaeii/dc-shield/
    ```
-2. Build the container:
+2. Configure your settings by editing `config.json`. Ensure you have the following keys:
+
+   - `default_server`: Default subdomain URL.
+   - `honeypot_server`: Alternative server URL for specified countries.
+   - `app_port`: Port this web server will be running on.
+   - `test_flag`: Flag to redirect every second request, ignoring thee coutry code. used for testing.
+
+3. Build the container:
    ```bash
    docker build -t dc-shield .
    ```
 
-3. Run the container:
+4. Run the container:
    ```bash
    docker run -p 5002:5002 dc-shield
    ```
+
 
 ## Installation without docker
 
