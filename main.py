@@ -9,8 +9,6 @@ Dependencies:
 
 """
 
-import asyncio
-import threading
 import discord
 import requests
 from logger import Logger
@@ -23,27 +21,8 @@ default_server:str
 alternative_server_url:str
 test_flag:bool
 redirected:bool
-channel_id:int
 config:dict
 
-# Initialize the Discord client
-intents = discord.Intents.default()
-intents.messages = True
-client = discord.Client(intents=intents)
-
-# Function to send a message to a specific channel
-async def send_to_channel(message):
-    global channel_id, client
-    channel = client.get_channel(channel_id)
-    if channel:
-        await channel.send(message)
-    else:
-        print("Channel not found.")
-
-# Event handler for when the bot is ready
-@client.event
-async def on_ready():
-    print(f'Logged in as {client.user}')
 
 
 
