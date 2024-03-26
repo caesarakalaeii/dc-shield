@@ -5,7 +5,6 @@ This service redirects users based on their country of origin using GeoIP data.
 Users from Pakistan or India will be redirected to an alternative server, while users from other countries will be redirected to a default subdomain.
 
 Dependencies:
-- geoip2: A Python library for GeoIP2 databases.
 - quart: An asynchronous web microframework for Python.
 
 """
@@ -19,7 +18,8 @@ app = Quart(__name__)
 l = Logger(console_log= True, file_logging=True, file_URI='logs/log.txt', override=True)
 default_server:str
 alternative_server_url:str
-
+test_flag:bool
+redirected:bool
 
 
 
@@ -46,31 +46,56 @@ async def request_ip_location(ip_address):
         l.error(f"Error fetching IP location: {e}")
     return None
 
-@app.route('/')
-async def index():
-    ip_address = request.headers.get('X-Real-IP')
-    l.info(f'IP Address is: {ip_address}')
-    forwarded_for = request.headers.get('X-Forwarded-For')
-    l.info(f'forwarded_for is: {forwarded_for}')
-    country_code = await get_country(ip_address)
+async def redirect_handler(ip ,normal_server, honeypot):
+    country_code = await get_country(ip)
     l.info(f'Country code is: {country_code}')
-    
+    #if test flag is set redirect every 2nd request to honeypot
+    if test_flag:
+        if redirected:
+            l.info(f'Test flag, changed coutry code: {country_code}')
+        else:
+            l.info(f'Test flag, not changing coutry code')
+        redirected = not redirected
+        
     if country_code and country_code in ['PK', 'IN']:
-        l.info(f"Rediredcting to: {alternative_server_url}")
-        return redirect(alternative_server_url)
+        l.info(f"Rediredcting to Honeypot: {honeypot}")
+        return redirect(honeypot)
     
     else:
-        l.info(f"Rediredcting to: {default_server}")
-        return redirect(default_server)
-    
+        l.info(f"Rediredcting to: {normal_server}")
+        return redirect(normal_server)
 
+@app.route('/')
+async def index():
+    l.info('Default route called.')
+    ip_address = request.headers.get('X-Real-IP')
+    l.info(f'IP Address is: {ip_address}')
+    return await redirect_handler(ip_address, default_server, alternative_server_url)
+    
+    
+@app.route('/<path:dc_invite>')
+async def refer(dc_invite):
+    l.info('Custom route called.')
+    ip_address = request.headers.get('X-Real-IP')
+    l.info(f'IP Address is: {ip_address}')
+    custom_server = f'https://discord.gg/{dc_invite}'
+    return await redirect_handler(ip_address, custom_server, alternative_server_url)
+    
+@app.route('/<path:dc_invite>/<path:honeypot>')
+async def refer_custom(dc_invite, honeypot):
+    l.info('Custom route called with custom honeypot.')
+    ip_address = request.headers.get('X-Real-IP')
+    l.info(f'IP Address is: {ip_address}')
+    custom_server = f'https://discord.gg/{dc_invite}'
+    custom_honeypot = f'https://discord.gg/{honeypot}'
+    return await redirect_handler(ip_address, custom_server, custom_honeypot)
 
 
 if __name__ == '__main__':
     
     config = read_json_file('config.json')
-    
-    
+    test_flag = True
+    redirected = False
     
     default_server = config['default_server']
 
