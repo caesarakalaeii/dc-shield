@@ -47,6 +47,7 @@ async def request_ip_location(ip_address):
     return None
 
 async def redirect_handler(ip ,normal_server, honeypot):
+    global redirected
     country_code = await get_country(ip)
     l.info(f'Country code is: {country_code}')
     #if test flag is set redirect every 2nd request to honeypot
