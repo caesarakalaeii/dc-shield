@@ -8,7 +8,23 @@ NOTE: Probably not a good idea if your community is based mainly in Pakistan and
 Ready to use solution under https://dc-shield.laeii.de/your-dc-inv-code  
 Also with customizable honeypot: https://dc-shield.laeii.de/your-dc-link/your-honey-pot-inv-code  
 
-## Installation
+## Installation with docker
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/caesarakalaeii/dc-shield/
+   ```
+2. Build the container:
+   ```bash
+   docker build -t dc-shield .
+   ```
+
+3. Run the container:
+   ```bash
+   docker run -p 5002:5002 dc-shield
+   ```
+
+## Installation without docker
 
 1. Clone the repository:
 
