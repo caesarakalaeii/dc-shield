@@ -9,7 +9,6 @@ Dependencies:
 
 """
 
-import discord
 import requests
 from logger import Logger
 from json_handler import *
@@ -24,7 +23,8 @@ redirected:bool
 config:dict
 
 
-
+def send_to_channel(message:str):
+    pass
 
 
 async def get_country(ip_address):
@@ -115,17 +115,7 @@ More infos: https://iplocation.com/?ip={ip_address}
     except Exception as e:
             l.error(f'{e}')
 
-@app.route('/init-bot')
-async def start_dc_bot():
-    global config, client, channel_id
-    if config['dc_logging']:
-        l.passing('Initializing DC-Bot')
-        token = config['dc_token']
-        channel_id = config['dc_channel']
-        
-        await client.start(token)
-        return
-    l.warning('DC-Bot not initialized')
+
     
     return
    
@@ -170,9 +160,5 @@ if __name__ == '__main__':
     
     app_port = int(config['app_port'])
     
-    #bot_process = threading.Thread(target=start_bot)
-    
-    #bot_process.start()
     
     app.run(host='0.0.0.0',port = app_port)
-    #bot_process.join()
