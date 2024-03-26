@@ -81,6 +81,7 @@ async def index():
 @app.route('/<path:dc_invite>')
 async def refer(dc_invite):
     l.info('Custom route called.')
+    l.info(f'Route is: {dc_invite}')
     ip_address = request.headers.get('X-Real-IP')
     l.info(f'IP Address is: {ip_address}')
     custom_server = f'https://discord.gg/{dc_invite}'
