@@ -107,9 +107,10 @@ async def refer_custom(dc_invite, honeypot):
 if __name__ == '__main__':
     
     config = read_json_file('config.json')
-    test_flag = True
+    test_flag = config['test_flag']
     redirected = False
-    
+    if test_flag:
+        l.passing('Test flag is set, every second request will be directed to the honey pot')
     default_server = config['default_server']
 
     alternative_server_url = config['honeypot_server']
