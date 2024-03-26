@@ -67,7 +67,7 @@ async def redirect_handler(ip ,normal_server, honeypot):
         l.info(f"Rediredcting to: {normal_server}")
         return redirect(normal_server)
 
-'''@app.route('/')
+@app.route('/')
 async def index():
     l.info('Default route called.')
     ip_address = request.headers.get('X-Real-IP')
@@ -75,7 +75,7 @@ async def index():
     try:
         return await redirect_handler(ip_address, default_server, alternative_server_url)
     except Exception as e:
-        l.error(f'{e}')'''
+        l.error(f'{e}')
 
     
 @app.route('/c/<path:dc_invite>')
