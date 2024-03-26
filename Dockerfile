@@ -1,6 +1,9 @@
 # Use the official Python image as the base image
 FROM python:3.9-slim
 
+# Expose the port that the app runs on
+EXPOSE 5002
+
 # Set the working directory in the container
 WORKDIR /app
 
@@ -10,8 +13,7 @@ COPY . /app
 # Install any dependencies specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose the port that the app runs on
-EXPOSE 5002
+
 
 # Run main.py when the container launches
 CMD ["python", "main.py"]
