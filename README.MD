@@ -1,12 +1,12 @@
 # DC-SHIELD
 
-A simple asynchronous Quart application for redirecting users based on their country.
-Will keeep 90% of scammers away from your default discord.
+A simple asynchronous Quart application for redirecting users based on their country.  
+Will keeep 90% of scammers away from your default discord.  
 
-NOTE: Probably not a good idea if your community is based mainly in Pakistan and India.
+NOTE: Probably not a good idea if your community is based mainly in Pakistan and India.  
 
-Ready to use solution under https://dc-shield.laeii.de/your-dc-inv-code
-Also with customizable honeypot: https://dc-shield.laeii.de/your-dc-link/your-honey-pot-inv-code
+Ready to use solution under https://dc-shield.laeii.de/your-dc-inv-code  
+Also with customizable honeypot: https://dc-shield.laeii.de/your-dc-link/your-honey-pot-inv-code  
 
 ## Installation
 
