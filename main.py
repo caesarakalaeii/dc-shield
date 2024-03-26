@@ -9,6 +9,7 @@ Dependencies:
 
 """
 
+import asyncio
 import threading
 import discord
 import requests
@@ -27,8 +28,7 @@ config:dict
 
 # Initialize the Discord client
 intents = discord.Intents.default()
-intents.message_content = True
-intents.guilds = True
+intents.messages = True
 client = discord.Client(intents=intents)
 
 # Function to send a message to a specific channel
@@ -161,7 +161,7 @@ async def refer_custom(dc_invite, honeypot):
     except Exception as e:
             l.error(f'{e}')
 
-def start_dc_bot():
+async def start_dc_bot():
     global config, client, channel_id
     
     if config['dc_logging']:
@@ -169,8 +169,10 @@ def start_dc_bot():
         channel_id = config['dc_channel']
         
         
-        client.start(token)
+        await client.start(token)
     
+def start_bot():
+    asyncio.run(start_dc_bot())
 
 if __name__ == '__main__':
     
@@ -185,9 +187,9 @@ if __name__ == '__main__':
     
     app_port = int(config['app_port'])
     
-    bot_process = threading.Thread(start_dc_bot)
+    bot_process = threading.Thread(target=start_bot)
     
-    bot_process.run()
+    bot_process.start()
     
     app.run(host='0.0.0.0',port = app_port)
     bot_process.join()
