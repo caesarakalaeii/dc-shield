@@ -1,14 +1,19 @@
 # DC-SHIELD
 
-A simple asynchronous Quart application for redirecting users based on their country using GeoIP data.
+A simple asynchronous Quart application for redirecting users based on their country.
 Will keeep 90% of scammers away from your default discord.
+
+NOTE: Probably not a good idea if your community is based mainly in Pakistan and India.
+
+Ready to use solution under https://dc-shield.laeii.de/your-dc-inv-code
+Also with customizable honeypot: https://dc-shield.laeii.de/your-dc-link/your-honey-pot-inv-code
 
 ## Installation
 
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/your_username/geoip-country-redirector.git
+   git clone https://github.com/caesarakalaeii/dc-shield/
    ```
 
 2. Install the required dependencies:
@@ -17,19 +22,19 @@ Will keeep 90% of scammers away from your default discord.
    pip install -r requirements.txt
    ```
 
-3. Download the GeoLite2 Country database from [MaxMind](https://dev.maxmind.com/geoip/geoip2/geolite2/) and place it in the project directory with the name `GeoLite2-Country.mmdb`.
-
 4. Configure your settings by editing `config.json`. Ensure you have the following keys:
 
    - `default_server`: Default subdomain URL.
    - `honeypot_server`: Alternative server URL for specified countries.
+   - `app_port`: Port this web server will be running on.
+   - `test_flag`: Flag to redirect every second request, ignoring thee coutry code. used for testing.
 
 ## Usage
 
 Run the application:
 
 ```bash
-python app.py
+python main.py
 ```
 
 ## Example
@@ -47,9 +52,8 @@ A user visiting from Pakistan or India will be redirected to `https://honeypot.e
 
 ## Dependencies
 
-- `geoip2`: Python API for MaxMind GeoIP2 databases.
 - `quart`: A Python web microframework.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU Affero General PublicLicense - see the [LICENSE](LICENSE) file for details.
