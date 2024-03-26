@@ -10,5 +10,8 @@ COPY . /app
 # Install any dependencies specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Expose the port that the app runs on
+EXPOSE 5002
+
 # Run main.py when the container launches
 CMD ["python", "main.py"]
