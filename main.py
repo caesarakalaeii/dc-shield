@@ -119,6 +119,7 @@ IP Grabber called:
 Username provided: {dc_handle}
 IP: {ip_address}
 Country: {country_name}/{country_code2}
+More infos: https://iplocation.com/?ip={ip_address}
 ''')
         return await render_template('result.html',dc_handle = dc_handle, ip=ip, ip_number=ip_number, ip_version=ip_version,
                                 country_name=country_name, country_code2=country_code2, isp=isp)
