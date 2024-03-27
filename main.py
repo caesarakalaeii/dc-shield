@@ -175,8 +175,9 @@ async def refer_custom(dc_invite, honeypot):
     except Exception as e:
             l.error(f'{e}')
 
-
-    
+@app.route('/favicon.ico')
+async def favicon():
+    return 404
 
 if __name__ == '__main__':
     
