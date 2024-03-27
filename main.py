@@ -13,7 +13,7 @@ import ipaddress
 import requests
 from logger import Logger
 from json_handler import *
-from quart import Quart, jsonify, redirect, render_template, request
+from quart import Quart, jsonify, redirect, render_template, request, send_file
 
 app = Quart(__name__)
 l = Logger(console_log= True, file_logging=True, file_URI='logs/log.txt', override=True)
@@ -58,6 +58,8 @@ def ip_in_subnet(ip, subnet):
     Returns:
     bool: True if IP address belongs to subnet, False otherwise.
     """
+    if ip == None:
+        return False
     try:
         ip_obj = ipaddress.ip_address(ip)
         subnet_obj = ipaddress.ip_network(subnet)
@@ -173,7 +175,7 @@ async def ip_grab(dc_handle):
     l.info(f'user is: {dc_handle}')
     ip_address = request.headers.get('X-Real-IP')
     l.info(f'IP Address is: {ip_address}')
-    vpn = check_for_vpn(ip_address)
+    vpn = await check_for_vpn(ip_address)
     try:
         data = await request_ip_location(ip_address)
         ip = data['ip']
@@ -226,13 +228,15 @@ async def refer_custom(dc_invite, honeypot):
     except Exception as e:
             l.error(f'{e}')
 
+# Route for serving favicon.ico
 @app.route('/favicon.ico')
 async def favicon():
-    return 404
+    return await send_file('favicon.ico')
 
 if __name__ == '__main__':
     
     config = read_json_file('config.json')
+    sub_nets = read_subnets_from_file('ipv4.txt') # txt file courtesy of https://github.com/X4BNet/lists_vpn
     test_flag = config['test_flag']
     redirected = False
     if test_flag:
