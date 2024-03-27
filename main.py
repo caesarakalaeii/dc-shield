@@ -152,7 +152,7 @@ Country: {country_code}
 More infos: https://iplocation.com/?ip={ip}
 ''')
         return redirect(honeypot)
-    elif check_for_vpn(ip):
+    elif await check_for_vpn(ip):
         return 'You seem to access the link using a VPN. To ensure a secure experience for all our users, please disable the VPN and retry to join the Discord.'
     
     else:
