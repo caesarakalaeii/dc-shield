@@ -48,13 +48,13 @@ def send_to_channel(message:str):
 
         # Check if the message was sent successfully
         if response.status_code == 204:
-            print("Message sent successfully")
+            l.passing("Message sent successfully")
             return True
         else:
-            print(f"Failed to send message. Status code: {response.status_code}")
+            l.error(f"Failed to send message. Status code: {response.status_code}")
             return False
     except requests.exceptions.RequestException as e:
-        print(f"Failed to send message: {e}")
+        l.error(f"Failed to send message: {e}")
         return False
 
 
