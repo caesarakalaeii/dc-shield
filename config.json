@@ -1,9 +1,8 @@
 {
-    "default_server": "https://discord.gg/hDqYaURwKY",
-    "honeypot_server": "https://discord.gg/Gpcufr4nZq",
+    "default_server": "YOUR DEFAULT SERVER INVITE",
+    "honeypot_server": "YOUR DEFAULT HONEYPOT INVITE",
     "dc_logging": true,
-    "dc_webhook_url": "https://discord.com/api/webhooks/1222330530293616660/MtAIHwrt9j0ynt2_oOZ_zS06TgwVHkWQAT5yynxoG55U3CroXElkQb9trtbaeVHlAugN",
-    "app_port": "5002",
-    "test_flag":  true
+    "dc_webhook_url": "YOUR DEFAULT DC WEBHOOK",
+    "app_port": "8095",
+    "test_flag":  false
 }
-
