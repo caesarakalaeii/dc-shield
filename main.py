@@ -87,6 +87,10 @@ def extract_device_info(request_obj):
     """
     headers = request_obj.headers
 
+    # Extract the real IP address using the new function
+    real_ip = extract_real_ip(request_obj)
+    proxy_ip = headers.get('X-Real-IP', 'Unknown')
+
     # User Agent parsing
     user_agent_string = headers.get('User-Agent', 'Unknown')
     user_agent = parse(user_agent_string)
@@ -108,6 +112,10 @@ def extract_device_info(request_obj):
         'is_tablet': user_agent.is_tablet,
         'is_pc': user_agent.is_pc,
         'is_bot': user_agent.is_bot,
+
+        # IP Information - both real and proxy
+        'real_ip': real_ip,
+        'proxy_ip': proxy_ip,
 
         # HTTP Headers
         'accept_language': headers.get('Accept-Language', 'Unknown'),
@@ -173,8 +181,8 @@ def extract_device_info(request_obj):
         'content_type': request_obj.content_type or 'Unknown',
         'content_length': headers.get('Content-Length', 'Unknown'),
 
-        # Timestamp
-        'access_time': datetime.now().isoformat(),
+        # Timestamp with better formatting
+        'access_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
         'access_timestamp': datetime.now().timestamp()
     }
 
@@ -236,6 +244,9 @@ def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
     threat_score = 75  # Honeypot triggers are high risk
     threat_level, embed_color = get_threat_indicator(threat_score)
 
+    # Fix IP address display - use fallback if None
+    display_ip = ip if ip and ip != "None" else "127.0.0.1 (localhost)"
+
     embed = {
         "title": "🚨 HONEYPOT SECURITY BREACH",
         "description": f"**{threat_level} THREAT DETECTED**\n🎯 **Malicious actor intercepted from {country_code}**",
@@ -252,7 +263,7 @@ def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
     }
 
     # Enhanced Network Intelligence
-    network_value = f"**IP Address:** `{ip}`\n"
+    network_value = f"**IP Address:** `{display_ip}`\n"
     network_value += f"**Country Code:** {country_code}\n"
     network_value += f"**Threat Assessment:** {threat_level}\n"
     network_value += f"**Risk Score:** {create_progress_bar(threat_score)}"
@@ -266,7 +277,7 @@ def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
     # Honeypot Information
     honeypot_value = f"**Decoy Server:** `{honeypot}`\n"
     honeypot_value += f"**Redirect Status:** ✅ Successfully executed\n"
-    honeypot_value += f"**Analysis:** [View IP Details](https://iplocation.com/?ip={ip})"
+    honeypot_value += f"**Analysis:** [View IP Details](https://iplocation.com/?ip={display_ip.replace(' (localhost)', '')})"
 
     embed["fields"].append({
         "name": "🍯 HONEYPOT DETAILS",
@@ -293,10 +304,18 @@ def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
             "inline": True
         })
 
-        # Connection Intelligence
+        # Connection Intelligence with better timestamp formatting
         connection_value = f"**Language Settings:** {device_info['accept_language'][:25]}...\n"
         connection_value += f"**Referrer Source:** {device_info['referer'][:40]}...\n"
-        connection_value += f"**Access Time:** {device_info['access_time']}\n"
+
+        # Format timestamp better
+        try:
+            access_dt = datetime.fromisoformat(device_info['access_time'].replace('Z', '+00:00'))
+            formatted_time = access_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+        except:
+            formatted_time = device_info['access_time']
+
+        connection_value += f"**Access Time:** {formatted_time}\n"
         connection_value += f"**User Agent:** {device_info['user_agent_string'][:50]}..."
 
         embed["fields"].append({
@@ -323,6 +342,49 @@ def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
         })
 
     return embed
+
+def create_honeypot_buttons(ip, country_code, honeypot):
+    """
+    Create interactive buttons for honeypot alerts
+    """
+    # Fix IP for URL if it's None or localhost
+    url_ip = ip if ip and ip != "None" and not ip.startswith("127.") else "8.8.8.8"
+
+    return [
+        {
+            "type": 1,  # Action Row
+            "components": [
+                {
+                    "type": 2,  # Button
+                    "style": 2,  # Secondary (gray)
+                    "label": "🔍 IP Analysis",
+                    "custom_id": f"ip_analysis_{url_ip}",
+                    "emoji": {"name": "🌐"}
+                },
+                {
+                    "type": 2,  # Button
+                    "style": 2,  # Secondary (gray)
+                    "label": "📊 Threat Details",
+                    "custom_id": f"threat_details_{country_code}",
+                    "emoji": {"name": "⚠️"}
+                },
+                {
+                    "type": 2,  # Button
+                    "style": 4,  # Danger (red)
+                    "label": "🛡️ Block IP",
+                    "custom_id": f"block_ip_{url_ip}",
+                    "emoji": {"name": "🚫"}
+                },
+                {
+                    "type": 2,  # Button
+                    "style": 1,  # Primary (blue)
+                    "label": "📋 Full Report",
+                    "custom_id": f"full_report_honeypot",
+                    "emoji": {"name": "📄"}
+                }
+            ]
+        }
+    ]
 
 def create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_code2, isp, device_info):
     """
@@ -449,6 +511,62 @@ def create_ip_grabber_embed(dc_handle, ip_address, vpn, country_name, country_co
 
     if device_info.get('sec_ch_rtt', 'Unknown') != 'Unknown':
         tech_specs.append(f"**Network Latency:** {device_info['sec_ch_rtt']}ms")
+def extract_real_ip(request_obj):
+    """
+    Extract the real client IP address when running behind nginx proxy manager.
+
+    Args:
+    - request_obj: The Quart request object
+
+    Returns:
+    - str: The real client IP address
+    """
+    headers = request_obj.headers
+
+    # Check X-Forwarded-For header first (contains real client IP)
+    x_forwarded_for = headers.get('X-Forwarded-For')
+    if x_forwarded_for:
+        # Handle comma-separated IPs (take the first one - the original client)
+        real_ip = x_forwarded_for.split(',')[0].strip()
+        if is_valid_ip(real_ip):
+            return real_ip
+
+    # Fall back to X-Real-IP header
+    x_real_ip = headers.get('X-Real-IP')
+    if x_real_ip and is_valid_ip(x_real_ip):
+        return x_real_ip
+
+    # Check CF-Connecting-IP (Cloudflare)
+    cf_ip = headers.get('CF-Connecting-IP')
+    if cf_ip and is_valid_ip(cf_ip):
+        return cf_ip
+
+    # Fall back to request.remote_addr as last resort
+    remote_addr = getattr(request_obj, 'remote_addr', None)
+    if remote_addr and is_valid_ip(remote_addr):
+        return remote_addr
+
+    # If all else fails, return None
+    return None
+
+def is_valid_ip(ip_string):
+    """
+    Validate if a string is a valid IP address.
+
+    Args:
+    - ip_string: String to validate
+
+    Returns:
+    - bool: True if valid IP, False otherwise
+    """
+    if not ip_string:
+        return False
+
+    try:
+        ipaddress.ip_address(ip_string)
+        return True
+    except ValueError:
+        return False
 
     if tech_specs:
         embed["fields"].append({
@@ -927,66 +1045,54 @@ async def request_ip_location(ip_address):
         l.error(f"Error fetching IP location: {e}")
     return None
 
-async def redirect_handler(ip ,normal_server, honeypot, request_obj=None):
+async def redirect_handler(ip, normal_server, honeypot, request_obj=None):
     global redirected
-    country_code = await get_country(ip)
-    l.info(f'Country code is: {country_code}')
+
+    # Extract real IP if request object is provided
+    real_ip = ip  # Default fallback
+    if request_obj:
+        extracted_real_ip = extract_real_ip(request_obj)
+        if extracted_real_ip:
+            real_ip = extracted_real_ip
+            l.info(f'Real IP extracted: {real_ip} (original: {ip})')
+        else:
+            l.info(f'Could not extract real IP, using: {ip}')
+
+    # Use real IP for geolocation
+    country_code = await get_country(real_ip)
+    l.info(f'Country code for {real_ip}: {country_code}')
+
     #if test flag is set redirect every 2nd request to honeypot
     if test_flag:
         if redirected:
             country_code = 'PK'
-            l.info(f'Test flag, changed coutry code: {country_code}')
+            l.info(f'Test flag, changed country code: {country_code}')
         else:
-            l.info('Test flag, not changing coutry code')
+            l.info('Test flag, not changing country code')
         redirected = not redirected
         
     if country_code and country_code in ['PK', 'IN']:
-        l.info(f"Rediredcting to Honeypot: {honeypot}")
+        l.info(f"Redirecting to Honeypot: {honeypot}")
+
+        # Initialize device_info to None first
+        device_info = None
 
         # Extract device information if request object is provided
-        honeypot_message = f'''
-🚨 **Honeypot Triggered** 🚨
-🌐 **IP:** {ip}
-🏳️ **Country:** {country_code}
-🔗 **Honeypot:** {honeypot}
-🔗 **More info:** https://iplocation.com/?ip={ip}
-'''
-
         if request_obj:
             device_info = extract_device_info(request_obj)
             l.info(f'Honeypot device info: {device_info}')
 
-            honeypot_message = f'''
-🚨 **Honeypot Triggered** 🚨
-🌐 **IP:** {ip}
-🏳️ **Country:** {country_code}
-🔗 **Honeypot:** {honeypot}
-
-📱 **Device Information:**
-• **Browser:** {device_info['browser_family']} {device_info['browser_version']}
-• **OS:** {device_info['os_family']} {device_info['os_version']}
-• **Device:** {device_info['device_family']} ({device_info['device_brand']} {device_info['device_model']})
-• **Type:** {'📱 Mobile' if device_info['is_mobile'] else '💻 Desktop' if device_info['is_pc'] else '📟 Tablet' if device_info['is_tablet'] else '🤖 Bot' if device_info['is_bot'] else 'Unknown'}
-
-🌍 **Network Details:**
-• **Language:** {device_info['accept_language']}
-• **Referer:** {device_info['referer']}
-• **User Agent:** {device_info['user_agent_string'][:100]}...
-• **Time:** {device_info['access_time']}
-
-🔗 **More info:** https://iplocation.com/?ip={ip}
-'''
-
-        # Create and send embed message
-        embed = create_honeypot_embed(ip, country_code, honeypot, device_info)
-        send_to_channel(None, embed)
+        # Create and send embed message with buttons - use real IP for display
+        embed = create_honeypot_embed(real_ip, country_code, honeypot, device_info)
+        buttons = create_honeypot_buttons(real_ip, country_code, honeypot)
+        send_to_channel(None, embed, buttons)
 
         return redirect(honeypot)
-    elif await check_for_vpn(ip):
+    elif await check_for_vpn(real_ip):
         return 'You seem to access the link using a VPN. To ensure a secure experience for all our users, please disable the VPN and retry to join the Discord.'
     
     else:
-        l.info(f"Rediredcting to: {normal_server}")
+        l.info(f"Redirecting to: {normal_server}")
         return redirect(normal_server)
 
 @app.route('/')
@@ -1095,6 +1201,7 @@ async def refer_custom(dc_invite, honeypot):
 @app.route('/favicon.ico')
 async def favicon():
     return await send_file('favicon.ico')
+
 
 if __name__ == '__main__':
     
