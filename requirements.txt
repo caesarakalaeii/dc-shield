@@ -2,3 +2,4 @@ quart
 requests
 discord
 ipaddress
+user-agents

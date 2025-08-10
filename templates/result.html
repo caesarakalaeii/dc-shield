@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Freelance management finance department</title>
 
-                    <!-- HTML Meta Tags -->
+    <!-- HTML Meta Tags -->
     <meta name="description" content="Create a ticket with the freelance management finance department.">
 
     <!-- Open Graph Meta Tags -->
@@ -26,45 +25,378 @@
     <meta name="twitter:description" content="Create a ticket with the freelance management finance department.">
     <meta name="twitter:image" content="https://i.imgur.com/j2tfjeZ.png">
 
-<!-- Meta Tags Generated via https://opengraph.dev -->
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
     <style>
-        /* Additional inline styles for result page */
-        .result-container {
-            max-width: 400px;
-            margin: 0 auto;
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
             padding: 20px;
+            min-height: 100vh;
+        }
+
+        .result-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 30px;
             background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 15px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #e74c3c;
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
         }
 
         h2 {
             color: #333;
             text-align: center;
+            font-size: 1.8em;
+            margin-bottom: 30px;
+        }
+
+        .info-section {
+            margin-bottom: 25px;
+            padding: 20px;
+            background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+            border-radius: 10px;
+            border-left: 5px solid #007bff;
+        }
+
+        .section-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #495057;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+
+        .section-title::before {
+            content: "🔍";
+            margin-right: 10px;
+            font-size: 1.2em;
         }
 
         .result-item {
-            margin-bottom: 10px;
-            padding: 10px;
-            background-color: #f9f9f9;
-            border-radius: 4px;
-            border: 1px solid #ccc;
+            margin-bottom: 12px;
+            padding: 12px 15px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            transition: all 0.3s ease;
+        }
+
+        .result-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .result-item strong {
+            color: #495057;
+            min-width: 120px;
+        }
+
+        .result-value {
+            color: #6c757d;
+            word-break: break-all;
+            text-align: right;
+            flex: 1;
+            margin-left: 15px;
+        }
+
+        .device-type {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+            color: white;
+        }
+
+        .mobile { background-color: #28a745; }
+        .desktop { background-color: #007bff; }
+        .tablet { background-color: #ffc107; color: #212529; }
+        .bot { background-color: #dc3545; }
+        .unknown { background-color: #6c757d; }
+
+        .timestamp {
+            font-style: italic;
+            color: #868e96;
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
         }
     </style>
 </head>
 <body>
     <div class="result-container">
-        <h1>Get busted Scammer</h1>
+        <h1>🎯 Get busted Scammer 🎯</h1>
         <h2>This u {{ dc_handle }}</h2>
-        <div class="result-item"><strong>IP:</strong> {{ ip }}</div>
-        <div class="result-item"><strong>IP Number:</strong> {{ ip_number }}</div>
-        <div class="result-item"><strong>IP Version:</strong> {{ ip_version }}</div>
-        <div class="result-item"><strong>Country Name:</strong> {{ country_name }}</div>
-        <div class="result-item"><strong>Country Code:</strong> {{ country_code2 }}</div>
-        <div class="result-item"><strong>ISP:</strong> {{ isp }}</div>
+
+        <!-- IP Information Section -->
+        <div class="info-section">
+            <div class="section-title">Network Information</div>
+            <div class="result-item">
+                <strong>IP Address:</strong>
+                <span class="result-value">{{ ip }}</span>
+            </div>
+            <div class="result-item">
+                <strong>IP Number:</strong>
+                <span class="result-value">{{ ip_number }}</span>
+            </div>
+            <div class="result-item">
+                <strong>IP Version:</strong>
+                <span class="result-value">IPv{{ ip_version }}</span>
+            </div>
+            <div class="result-item">
+                <strong>Country:</strong>
+                <span class="result-value">{{ country_name }} ({{ country_code2 }})</span>
+            </div>
+            <div class="result-item">
+                <strong>ISP:</strong>
+                <span class="result-value">{{ isp }}</span>
+            </div>
+        </div>
+
+        <!-- Device Information Section -->
+        <div class="info-section">
+            <div class="section-title">Device & Browser Information</div>
+            <div class="result-item">
+                <strong>Browser:</strong>
+                <span class="result-value">{{ device_info.browser_family }} {{ device_info.browser_version }}</span>
+            </div>
+            <div class="result-item">
+                <strong>Operating System:</strong>
+                <span class="result-value">{{ device_info.os_family }} {{ device_info.os_version }}</span>
+            </div>
+            <div class="result-item">
+                <strong>Device:</strong>
+                <span class="result-value">{{ device_info.device_family }}
+                    {% if device_info.device_brand and device_info.device_brand != 'None' %}
+                        ({{ device_info.device_brand }} {{ device_info.device_model }})
+                    {% endif %}
+                </span>
+            </div>
+            <div class="result-item">
+                <strong>Device Type:</strong>
+                <span class="result-value">
+                    {% if device_info.is_mobile %}
+                        <span class="device-type mobile">📱 Mobile</span>
+                    {% elif device_info.is_tablet %}
+                        <span class="device-type tablet">📟 Tablet</span>
+                    {% elif device_info.is_pc %}
+                        <span class="device-type desktop">💻 Desktop</span>
+                    {% elif device_info.is_bot %}
+                        <span class="device-type bot">🤖 Bot</span>
+                    {% else %}
+                        <span class="device-type unknown">❓ Unknown</span>
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+
+        <!-- Technical Details Section -->
+        <div class="info-section">
+            <div class="section-title">Technical Details</div>
+            <div class="result-item">
+                <strong>Languages:</strong>
+                <span class="result-value">{{ device_info.accept_language }}</span>
+            </div>
+            <div class="result-item">
+                <strong>Encoding:</strong>
+                <span class="result-value">{{ device_info.accept_encoding }}</span>
+            </div>
+            <div class="result-item">
+                <strong>Referer:</strong>
+                <span class="result-value">{{ device_info.referer }}</span>
+            </div>
+            <div class="result-item">
+                <strong>Host:</strong>
+                <span class="result-value">{{ device_info.host }}</span>
+            </div>
+            {% if device_info.sec_ch_ua_platform and device_info.sec_ch_ua_platform != 'Unknown' %}
+            <div class="result-item">
+                <strong>Platform:</strong>
+                <span class="result-value">{{ device_info.sec_ch_ua_platform }}</span>
+            </div>
+            {% endif %}
+            {% if device_info.dnt and device_info.dnt != 'Unknown' %}
+            <div class="result-item">
+                <strong>Do Not Track:</strong>
+                <span class="result-value">{{ device_info.dnt }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Cookie Information Section -->
+        {% if device_info.cookie_count > 0 %}
+        <div class="info-section">
+            <div class="section-title">🍪 Cookie Information</div>
+            <div class="result-item">
+                <strong>Total Cookies:</strong>
+                <span class="result-value">{{ device_info.cookie_count }}</span>
+            </div>
+            <div class="result-item">
+                <strong>Session Cookies:</strong>
+                <span class="result-value">
+                    {% if device_info.has_session_cookies %}
+                        <span style="color: #dc3545; font-weight: bold;">⚠️ Yes</span>
+                    {% else %}
+                        <span style="color: #28a745;">✅ No</span>
+                    {% endif %}
+                </span>
+            </div>
+            <div class="result-item">
+                <strong>Tracking Cookies:</strong>
+                <span class="result-value">
+                    {% if device_info.has_tracking_cookies %}
+                        <span style="color: #dc3545; font-weight: bold;">⚠️ Yes</span>
+                    {% else %}
+                        <span style="color: #28a745;">✅ No</span>
+                    {% endif %}
+                </span>
+            </div>
+            {% if device_info.cookies %}
+            <div class="result-item">
+                <strong>Cookie Details:</strong>
+                <span class="result-value" style="font-size: 0.9em; max-height: 100px; overflow-y: auto;">
+                    {% for cookie_name, cookie_value in device_info.cookies.items() %}
+                        <div style="margin: 2px 0; padding: 2px 5px; background: #f8f9fa; border-radius: 3px;">
+                            <strong>{{ cookie_name }}:</strong> {{ cookie_value[:50] }}{% if cookie_value|length > 50 %}...{% endif %}
+                        </div>
+                    {% endfor %}
+                </span>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Hardware & Client Hints Section -->
+        {% if device_info.sec_ch_device_memory != 'Unknown' or device_info.sec_ch_dpr != 'Unknown' or device_info.sec_ch_viewport_width != 'Unknown' %}
+        <div class="info-section">
+            <div class="section-title">⚙️ Hardware & Performance</div>
+            {% if device_info.sec_ch_device_memory != 'Unknown' %}
+            <div class="result-item">
+                <strong>Device Memory:</strong>
+                <span class="result-value">{{ device_info.sec_ch_device_memory }} GB</span>
+            </div>
+            {% endif %}
+            {% if device_info.sec_ch_dpr != 'Unknown' %}
+            <div class="result-item">
+                <strong>Device Pixel Ratio:</strong>
+                <span class="result-value">{{ device_info.sec_ch_dpr }}</span>
+            </div>
+            {% endif %}
+            {% if device_info.sec_ch_viewport_width != 'Unknown' %}
+            <div class="result-item">
+                <strong>Viewport Width:</strong>
+                <span class="result-value">{{ device_info.sec_ch_viewport_width }}px</span>
+            </div>
+            {% endif %}
+            {% if device_info.sec_ch_viewport_height != 'Unknown' %}
+            <div class="result-item">
+                <strong>Viewport Height:</strong>
+                <span class="result-value">{{ device_info.sec_ch_viewport_height }}px</span>
+            </div>
+            {% endif %}
+            {% if device_info.sec_ch_ua_arch != 'Unknown' %}
+            <div class="result-item">
+                <strong>CPU Architecture:</strong>
+                <span class="result-value">{{ device_info.sec_ch_ua_arch }}</span>
+            </div>
+            {% endif %}
+            {% if device_info.sec_ch_ua_bitness != 'Unknown' %}
+            <div class="result-item">
+                <strong>CPU Bitness:</strong>
+                <span class="result-value">{{ device_info.sec_ch_ua_bitness }}-bit</span>
+            </div>
+            {% endif %}
+            {% if device_info.sec_ch_downlink != 'Unknown' %}
+            <div class="result-item">
+                <strong>Network Speed:</strong>
+                <span class="result-value">{{ device_info.sec_ch_downlink }} Mbps</span>
+            </div>
+            {% endif %}
+            {% if device_info.sec_ch_rtt != 'Unknown' %}
+            <div class="result-item">
+                <strong>Network Latency:</strong>
+                <span class="result-value">{{ device_info.sec_ch_rtt }}ms</span>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Privacy & Preferences Section -->
+        {% if device_info.sec_ch_prefers_color_scheme != 'Unknown' or device_info.sec_ch_prefers_reduced_motion != 'Unknown' or device_info.sec_ch_save_data != 'Unknown' %}
+        <div class="info-section">
+            <div class="section-title">🎨 User Preferences</div>
+            {% if device_info.sec_ch_prefers_color_scheme != 'Unknown' %}
+            <div class="result-item">
+                <strong>Color Scheme:</strong>
+                <span class="result-value">{{ device_info.sec_ch_prefers_color_scheme }}</span>
+            </div>
+            {% endif %}
+            {% if device_info.sec_ch_prefers_reduced_motion != 'Unknown' %}
+            <div class="result-item">
+                <strong>Reduced Motion:</strong>
+                <span class="result-value">{{ device_info.sec_ch_prefers_reduced_motion }}</span>
+            </div>
+            {% endif %}
+            {% if device_info.sec_ch_save_data != 'Unknown' %}
+            <div class="result-item">
+                <strong>Data Saver:</strong>
+                <span class="result-value">{{ device_info.sec_ch_save_data }}</span>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Security Headers Section -->
+        <div class="info-section">
+            <div class="section-title">Security & Connection Details</div>
+            {% if device_info.sec_fetch_site and device_info.sec_fetch_site != 'Unknown' %}
+            <div class="result-item">
+                <strong>Fetch Site:</strong>
+                <span class="result-value">{{ device_info.sec_fetch_site }}</span>
+            </div>
+            {% endif %}
+            {% if device_info.sec_fetch_mode and device_info.sec_fetch_mode != 'Unknown' %}
+            <div class="result-item">
+                <strong>Fetch Mode:</strong>
+                <span class="result-value">{{ device_info.sec_fetch_mode }}</span>
+            </div>
+            {% endif %}
+            {% if device_info.cf_ray and device_info.cf_ray != 'Unknown' %}
+            <div class="result-item">
+                <strong>Cloudflare Ray:</strong>
+                <span class="result-value">{{ device_info.cf_ray }}</span>
+            </div>
+            {% endif %}
+            <div class="result-item">
+                <strong>Connection:</strong>
+                <span class="result-value">{{ device_info.connection }}</span>
+            </div>
+        </div>
+
+        <!-- User Agent Section -->
+        <div class="info-section">
+            <div class="section-title">Full User Agent</div>
+            <div class="result-item">
+                <strong>User Agent:</strong>
+                <span class="result-value" style="word-break: break-all;">{{ device_info.user_agent_string }}</span>
+            </div>
+        </div>
+
+        <div class="timestamp">
+            🕒 Captured at: {{ device_info.access_time }}
+        </div>
     </div>
 </body>
 </html>
