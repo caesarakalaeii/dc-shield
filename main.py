@@ -29,27 +29,60 @@ redirected:bool
 config:dict
 sub_nets: list
 
-def read_subnets_from_file(filename):
+def read_subnets_from_file(filename_or_url):
     global sub_nets
     """
-    Read subnets from a text file.
+    Read subnets from a text file or URL.
 
     Parameters:
-    filename (str): Name of the text file containing subnets.
+    filename_or_url (str): Local filename or URL containing subnets.
 
     Returns:
     list: List of subnets in CIDR notation.
     """
     subnets = []
+
+    # Check if it's a URL
+    if filename_or_url.startswith('http'):
+        try:
+            l.info(f"Fetching VPN subnets from: {filename_or_url}")
+            response = requests.get(filename_or_url, timeout=30)
+            response.raise_for_status()
+
+            # Process the content line by line
+            for line in response.text.splitlines():
+                line = line.strip()
+                if line and not line.startswith('#'):  # Skip empty lines and comments
+                    subnets.append(line)
+
+            l.passing(f"Successfully fetched {len(subnets)} VPN subnets from GitHub")
+            return subnets
+
+        except requests.exceptions.RequestException as e:
+            l.error(f"Failed to fetch subnets from URL: {e}")
+            l.warning("Falling back to local file if available")
+            # Fall back to local file
+            filename_or_url = 'ipv4.txt'
+        except Exception as e:
+            l.error(f"Unexpected error fetching subnets: {e}")
+            l.warning("Falling back to local file if available")
+            filename_or_url = 'ipv4.txt'
+
+    # Local file reading (fallback or direct)
     try:
-        with open(filename, 'r') as file:
+        with open(filename_or_url, 'r') as file:
             for line in file:
                 line = line.strip()
-                if line:  # Skip empty lines
+                if line and not line.startswith('#'):  # Skip empty lines and comments
                     subnets.append(line)
+        l.passing(f"Read {len(subnets)} subnets from local file: {filename_or_url}")
         return subnets
     except FileNotFoundError:
-        print("File not found.")
+        l.error(f"File not found: {filename_or_url}")
+        l.warning("VPN detection will be disabled")
+        return []
+    except Exception as e:
+        l.error(f"Error reading file {filename_or_url}: {e}")
         return []
 
 def ip_in_subnet(ip, subnet):
@@ -962,7 +995,11 @@ if __name__ == '__main__':
         l.passing('Falling back to environment variables')
         config = get_env_vars()
         l.console_log({k: v if k != 'dc_webhook_url' else f"***{v[-5:] if v else 'None'}" for k, v in config.items()})
-    sub_nets = read_subnets_from_file('ipv4.txt') # txt file courtesy of https://github.com/X4BNet/lists_vpn
+
+    # Fetch VPN subnets from GitHub with fallback to local file
+    vpn_source = 'https://raw.githubusercontent.com/X4BNet/lists_vpn/main/ipv4.txt'
+    sub_nets = read_subnets_from_file(vpn_source)
+
     test_flag = config['test_flag']
     redirected = False
     if test_flag:
