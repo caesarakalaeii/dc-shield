@@ -10,6 +10,7 @@ Dependencies:
 """
 
 import ipaddress
+import os
 import requests
 from datetime import datetime
 from user_agents import parse
@@ -950,7 +951,10 @@ async def favicon():
 if __name__ == '__main__':
     
     try:
-        config = read_json_file('config.json')
+        # Check for CONFIG_PATH environment variable first
+        config_path = os.getenv('CONFIG_PATH', 'config.json')
+        l.info(f'Using config file: {config_path}')
+        config = read_json_file(config_path)
     except FileNotFoundError as e:
         l.error(e)
         l.passing('Trying to gather config from env vars')
