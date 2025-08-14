@@ -15,6 +15,9 @@ import os
 import requests
 from datetime import datetime
 from user_agents import parse
+
+from ip_locator import refresh_ip_db, _load_ip_db, DB_PATH, _binary_search_country, _ranges_v4, _starts_v4, _ranges_v6, \
+    _starts_v6, set_logger
 from logger import Logger
 from json_handler import read_json_file, get_env_vars
 from surveillance_embeds import create_combined_surveillance_embed, get_threat_indicator
@@ -797,27 +800,38 @@ def send_advanced_data_to_discord(collected_data):
         except Exception as fallback_error:
             l.error(f'Fallback also failed: {fallback_error}')
 
-def get_country(ip_address):
-    """Retrieve country information for the given IP address."""
+def get_country(ip_address: str):
+    """
+    Retrieve country code for the given IP address using the local sapics DB.
+    Downloads the CSV if missing or stale, loads into memory once, uses binary search.
+    """
     try:
-        response = request_ip_location(ip_address)
-        if response and response.get("response_code") == "200":
-            country_code = response.get("country_code2")
-            return country_code
-    except Exception as e:
-        l.error(f"Error fetching country information: {e}")
-    return None
+        refresh_ip_db(force=False)
+        _load_ip_db(DB_PATH)
 
-def request_ip_location(ip_address):
-    """Make a request to the IP location API."""
-    url = f"https://api.iplocation.net/?cmd=ip-country&ip={ip_address}"
-    try:
-        response = requests.get(url)
-        if response.status_code == 200:
-            return response.json()
+        ip_obj = ipaddress.ip_address(ip_address)
+        ip_int = int(ip_obj)
+        if isinstance(ip_obj, ipaddress.IPv4Address):
+            return _binary_search_country(ip_int, _ranges_v4, _starts_v4)
+        else:
+            return _binary_search_country(ip_int, _ranges_v6, _starts_v6)
     except Exception as e:
-        l.error(f"Error fetching IP location: {e}")
-    return None
+        l.error(f"Error fetching country from local DB: {e}")
+        return None
+
+
+# --- Backwards-compat shim (No external HTTP API anymore) --------------------
+
+def request_ip_location(ip_address: str):
+    """
+    Deprecated: kept for compatibility. Uses the local DB and returns a dict
+    similar to the old API structure.
+    """
+    cc = get_country(ip_address)
+    if cc:
+        return {"response_code": "200", "country_code2": cc}
+    return {"response_code": "404"}
+
 
 async def redirect_handler(ip, normal_server, honeypot, request_obj=None):
     global redirected
@@ -983,6 +997,7 @@ async def favicon():
 
 
 if __name__ == '__main__':
+    set_logger(l)
     
     try:
         # Check for CONFIG_PATH environment variable first
