@@ -994,7 +994,7 @@ if __name__ == '__main__':
         l.error(f'Failed to load config file: {e}')
         l.passing('Falling back to environment variables')
         config = get_env_vars()
-        l.console_log({k: v if k != 'dc_webhook_url' else f"***{v[-5:] if v else 'None'}" for k, v in config.items()})
+        l.info({k: v if k != 'dc_webhook_url' else f"***{v[-5:] if v else 'None'}" for k, v in config.items()})
 
     # Fetch VPN subnets from GitHub with fallback to local file
     vpn_source = 'https://raw.githubusercontent.com/X4BNet/lists_vpn/main/ipv4.txt'
