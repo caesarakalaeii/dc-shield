@@ -10,6 +10,7 @@ Dependencies:
 """
 
 import ipaddress
+import json
 import os
 import requests
 from datetime import datetime
@@ -955,9 +956,10 @@ if __name__ == '__main__':
         config_path = os.getenv('CONFIG_PATH', 'config.json')
         l.info(f'Using config file: {config_path}')
         config = read_json_file(config_path)
-    except FileNotFoundError as e:
-        l.error(e)
-        l.passing('Trying to gather config from env vars')
+        l.passing(f'Successfully loaded config from {config_path}')
+    except Exception as e:
+        l.error(f'Failed to load config file: {e}')
+        l.passing('Falling back to environment variables')
         config = get_env_vars()
         l.console_log({k: v if k != 'dc_webhook_url' else f"***{v[-5:] if v else 'None'}" for k, v in config.items()})
     sub_nets = read_subnets_from_file('ipv4.txt') # txt file courtesy of https://github.com/X4BNet/lists_vpn

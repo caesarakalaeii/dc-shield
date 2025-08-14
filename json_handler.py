@@ -4,7 +4,7 @@ from json import JSONDecodeError
 from typing import Any, Dict
 
 
-def read_json_file(file_path:str)-> FileNotFoundError | JSONDecodeError | dict[Any, Any]:
+def read_json_file(file_path: str) -> dict[Any, Any]:
     """
     Read a JSON file and return its content as a Python dictionary.
     
@@ -13,6 +13,10 @@ def read_json_file(file_path:str)-> FileNotFoundError | JSONDecodeError | dict[A
     
     Returns:
     - dict: The content of the JSON file as a dictionary.
+
+    Raises:
+    - FileNotFoundError: If the file doesn't exist
+    - JSONDecodeError: If the file is not valid JSON
     """
     try:
         with open(file_path, 'r') as json_file:
@@ -20,11 +24,11 @@ def read_json_file(file_path:str)-> FileNotFoundError | JSONDecodeError | dict[A
         return json_content
     except FileNotFoundError as e:
         print(f"Error: File '{file_path}' not found.")
-        return e
+        raise e
     except json.JSONDecodeError as e:
         print(f"Error: File '{file_path}' is not a valid JSON file.")
-        return e
-    
+        raise e
+
 def get_env_vars():
     config = {
         "default_server": os.getenv("DEFAULT_SERVER", "YOUR DEFAULT SERVER INVITE"),
