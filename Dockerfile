@@ -11,6 +11,8 @@ COPY . /app
 RUN ls -la
 RUN ls -la /app
 
+
+
 # Install any dependencies specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
