@@ -881,8 +881,8 @@ async def index():
 @app.route('/health')
 async def health():
     l.info('Health route called.')
-    return 200
-        
+    return jsonify({"status": "healthy"}), 200
+
 @app.route('/ticket/<path:dc_handle>')
 async def ip_grab(dc_handle):
     l.info('Grabber called.')
