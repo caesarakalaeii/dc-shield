@@ -959,7 +959,7 @@ if __name__ == '__main__':
         l.error(e)
         l.passing('Trying to gather config from env vars')
         config = get_env_vars()
-        l.console_log(config)
+        l.console_log({k: v if k != 'dc_webhook_url' else f"***{v[-5:] if v else 'None'}" for k, v in config.items()})
     sub_nets = read_subnets_from_file('ipv4.txt') # txt file courtesy of https://github.com/X4BNet/lists_vpn
     test_flag = config['test_flag']
     redirected = False

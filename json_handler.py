@@ -1,8 +1,10 @@
 import json
 import os
+from json import JSONDecodeError
+from typing import Any, Dict
 
 
-def read_json_file(file_path:str)-> dict:
+def read_json_file(file_path:str)-> FileNotFoundError | JSONDecodeError | dict[Any, Any]:
     """
     Read a JSON file and return its content as a Python dictionary.
     
@@ -16,12 +18,12 @@ def read_json_file(file_path:str)-> dict:
         with open(file_path, 'r') as json_file:
             json_content = json.load(json_file)
         return json_content
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         print(f"Error: File '{file_path}' not found.")
-        return {}
-    except json.JSONDecodeError:
+        return e
+    except json.JSONDecodeError as e:
         print(f"Error: File '{file_path}' is not a valid JSON file.")
-        return {}
+        return e
     
 def get_env_vars():
     config = {
