@@ -17,11 +17,15 @@ IPV6_PATH = os.path.join(DATA_DIR, "dbip-country-ipv6.csv")
 REFRESH_SECONDS = 7 * 24 * 60 * 60  # 7 days
 HTTP_TIMEOUT = 15.0
 
-try:
-    l
-except NameError:
-    import logging
-    l = logging.getLogger(__name__)
+l = None
+
+def set_logger(logger):
+    global l
+    try:
+        l=logger
+    except NameError:
+        import logging
+        l = logging.getLogger(__name__)
 
 _ranges_v4: List[Tuple[int, int, str]] = []
 _starts_v4: List[int] = []

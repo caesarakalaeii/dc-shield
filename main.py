@@ -17,7 +17,7 @@ from datetime import datetime
 from user_agents import parse
 import bisect  # Add this import for binary search
 
-from ip_locator import refresh_ip_db, _load_ip_db, DB_PATH, _binary_search_country, _ranges_v4, _starts_v4, _ranges_v6, \
+from ip_locator import _ranges_v4, _starts_v4, _ranges_v6, \
     _starts_v6, set_logger
 from logger import Logger
 from json_handler import read_json_file, get_env_vars
