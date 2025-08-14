@@ -15,6 +15,7 @@ import os
 import requests
 from datetime import datetime
 from user_agents import parse
+import bisect  # Add this import for binary search
 
 from ip_locator import refresh_ip_db, _load_ip_db, DB_PATH, _binary_search_country, _ranges_v4, _starts_v4, _ranges_v6, \
     _starts_v6, set_logger
@@ -35,15 +36,16 @@ sub_nets: list
 def read_subnets_from_file(filename_or_url):
     global sub_nets
     """
-    Read subnets from a text file or URL.
+    Read subnets from a text file or URL and pre-process them for fast lookup.
 
     Parameters:
     filename_or_url (str): Local filename or URL containing subnets.
 
     Returns:
-    list: List of subnets in CIDR notation.
+    list: List of processed subnet ranges for binary search.
     """
     subnets = []
+    processed_ranges = []
 
     # Check if it's a URL
     if filename_or_url.startswith('http'):
@@ -59,12 +61,10 @@ def read_subnets_from_file(filename_or_url):
                     subnets.append(line)
 
             l.passing(f"Successfully fetched {len(subnets)} VPN subnets from GitHub")
-            return subnets
 
         except requests.exceptions.RequestException as e:
             l.error(f"Failed to fetch subnets from URL: {e}")
             l.warning("Falling back to local file if available")
-            # Fall back to local file
             filename_or_url = 'ipv4.txt'
         except Exception as e:
             l.error(f"Unexpected error fetching subnets: {e}")
@@ -72,46 +72,82 @@ def read_subnets_from_file(filename_or_url):
             filename_or_url = 'ipv4.txt'
 
     # Local file reading (fallback or direct)
-    try:
-        with open(filename_or_url, 'r') as file:
-            for line in file:
-                line = line.strip()
-                if line and not line.startswith('#'):  # Skip empty lines and comments
-                    subnets.append(line)
-        l.passing(f"Read {len(subnets)} subnets from local file: {filename_or_url}")
-        return subnets
-    except FileNotFoundError:
-        l.error(f"File not found: {filename_or_url}")
-        l.warning("VPN detection will be disabled")
-        return []
-    except Exception as e:
-        l.error(f"Error reading file {filename_or_url}: {e}")
-        return []
+    if not subnets:  # Only read from file if we didn't get subnets from URL
+        try:
+            with open(filename_or_url, 'r') as file:
+                for line in file:
+                    line = line.strip()
+                    if line and not line.startswith('#'):  # Skip empty lines and comments
+                        subnets.append(line)
+            l.passing(f"Read {len(subnets)} subnets from local file: {filename_or_url}")
+        except FileNotFoundError:
+            l.error(f"File not found: {filename_or_url}")
+            l.warning("VPN detection will be disabled")
+            return []
+        except Exception as e:
+            l.error(f"Error reading file {filename_or_url}: {e}")
+            return []
 
-def ip_in_subnet(ip, subnet):
+    # Pre-process subnets into sorted ranges for binary search
+    l.info("Pre-processing subnets for optimized lookup...")
+
+    for subnet in subnets:
+        try:
+            network = ipaddress.ip_network(subnet, strict=False)
+            start_ip = int(network.network_address)
+            end_ip = int(network.broadcast_address)
+            processed_ranges.append((start_ip, end_ip))
+        except ValueError as e:
+            l.warning(f"Invalid subnet format: {subnet} - {e}")
+            continue
+
+    # Sort ranges by start IP for binary search
+    processed_ranges.sort(key=lambda x: x[0])
+
+    # Merge overlapping ranges for efficiency
+    merged_ranges = []
+    for start, end in processed_ranges:
+        if merged_ranges and start <= merged_ranges[-1][1] + 1:
+            # Merge with previous range
+            merged_ranges[-1] = (merged_ranges[-1][0], max(merged_ranges[-1][1], end))
+        else:
+            merged_ranges.append((start, end))
+
+    l.passing(f"Optimized {len(subnets)} subnets into {len(merged_ranges)} merged ranges for fast lookup")
+    sub_nets = merged_ranges
+    return merged_ranges
+
+def check_for_vpn(ip):
     """
-    Check if an IP address belongs to a subnet.
+    Fast VPN check using binary search on pre-processed subnet ranges.
 
     Parameters:
-    ip (str): IP address.
-    subnet (str): Subnet in CIDR notation.
+    ip (str): IP address to check.
 
     Returns:
-    bool: True if IP address belongs to subnet, False otherwise.
+    bool: True if IP is in VPN subnet, False otherwise.
     """
-    if ip == None:
-        return False
-    try:
-        ip_obj = ipaddress.ip_address(ip)
-        subnet_obj = ipaddress.ip_network(subnet)
-        return ip_obj in subnet_obj
-    except ValueError as e:
-        print("Error:", e)
-        return False
-    
-def check_for_vpn(ip):
     global sub_nets
-    return any(ip_in_subnet(ip, subnet) for subnet in sub_nets)
+
+    if not ip or not sub_nets:
+        return False
+
+    try:
+        ip_int = int(ipaddress.ip_address(ip))
+
+        # Binary search for the range containing this IP
+        # Find the rightmost range that starts <= ip_int
+        idx = bisect.bisect_right([start for start, end in sub_nets], ip_int) - 1
+
+        if idx >= 0 and idx < len(sub_nets):
+            start, end = sub_nets[idx]
+            return start <= ip_int <= end
+
+        return False
+
+    except (ValueError, TypeError) as e:
+        l.warning(f"Invalid IP address for VPN check: {ip} - {e}")
+        return False
 
 def extract_device_info(request_obj):
     """
@@ -829,8 +865,22 @@ def request_ip_location(ip_address: str):
     """
     cc = get_country(ip_address)
     if cc:
-        return {"response_code": "200", "country_code2": cc}
-    return {"response_code": "404"}
+        return {
+            "response_code": "200",
+            "country_code2": cc,
+            "ip_number": str(int(ipaddress.ip_address(ip_address))),
+            "ip_version": "6" if ":" in ip_address else "4",
+            "country_name": "Unknown",  # We don't have country names in the local DB
+            "isp": "Unknown"  # We don't have ISP info in the local DB
+        }
+    return {
+        "response_code": "404",
+        "ip_number": "0",
+        "ip_version": "4",
+        "country_name": "Unknown",
+        "country_code2": "XX",
+        "isp": "Unknown"
+    }
 
 
 async def redirect_handler(ip, normal_server, honeypot, request_obj=None):

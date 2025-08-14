@@ -69,3 +69,4 @@ class Logger():
     def userReply(self,user, platform,skk):#green
         if self.console_log: 
             print(f"[{self._get_timestamp()}]", "\033[92m {}:\033[00m" .format("{}".format(user)+" on {}".format(platform)),"\033[92m {}\033[00m" .format(skk))
+
