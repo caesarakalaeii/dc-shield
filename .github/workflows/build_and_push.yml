@@ -26,7 +26,7 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build . \
+          docker build \
             -t ghcr.io/${{ github.repository_owner }}/dc-shield:${{ steps.extract_branch.outputs.branch }}
 
       - name: Push Docker image
