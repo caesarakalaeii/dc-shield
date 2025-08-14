@@ -1,11 +1,5 @@
 # Use the official Python image as the base image
-FROM python:3.9-slim
-
-# Expose the port that the app runs on
-EXPOSE 5002
-
-# Set the working directory in the container
-WORKDIR /app
+FROM python:3.13-slim
 
 # Copy the current directory contents into the container at /app
 COPY . /app
@@ -14,6 +8,7 @@ COPY . /app
 RUN pip install --no-cache-dir -r requirements.txt
 
 
-
+# Set the working directory in the container
+WORKDIR /app
 # Run main.py when the container launches
-CMD ["python", "/app/main.py"]
+CMD ["python", "main.py"]
