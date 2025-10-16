@@ -53,7 +53,7 @@ def read_subnets_from_file(filename_or_url):
     if filename_or_url.startswith("http"):
         try:
             l.info(f"Fetching VPN subnets from: {filename_or_url}")
-            response = requests.get(filename_or_url, timeout=30)
+            response = requests.get(filename_or_url, timeout=10)  # Reduced to 10s for faster startup
             response.raise_for_status()
 
             # Process the content line by line
@@ -1070,7 +1070,7 @@ async def index():
 
 @app.route("/health")
 async def health():
-    l.info("Health route called.")
+    """Health check endpoint - returns immediately to pass k8s probes"""
     return jsonify({"status": "healthy"}), 200
 
 
@@ -1226,7 +1226,12 @@ if __name__ == "__main__":
 
     # Fetch VPN subnets from GitHub with fallback to local file
     vpn_source = "https://raw.githubusercontent.com/X4BNet/lists_vpn/main/ipv4.txt"
-    sub_nets = read_subnets_from_file(vpn_source)
+    try:
+        sub_nets = read_subnets_from_file(vpn_source)
+    except Exception as e:
+        l.error(f"Failed to load VPN subnets: {e}")
+        l.warning("VPN detection will be disabled")
+        sub_nets = []
 
     test_flag = config["test_flag"]
     redirected = False
@@ -1242,7 +1247,7 @@ if __name__ == "__main__":
 
     # Initialize Discord bot if bot token is provided
     bot_token = config.get("discord_bot_token")
-    if bot_token:
+    if bot_token and bot_token not in ["", "None", "none"]:
         l.info("Discord bot token found, initializing bot in background...")
         try:
             # Initialize bot in background - non-blocking
@@ -1274,4 +1279,20 @@ if __name__ == "__main__":
         l.info("Add 'discord_bot_token' to config to enable interactive bot features")
 
     l.passing(f"Starting Quart application on 0.0.0.0:{app_port}")
-    app.run(host="0.0.0.0", port=app_port)
+
+    # Use hypercorn for production (more stable than dev server)
+    try:
+        import hypercorn.asyncio
+        from hypercorn.config import Config
+
+        config_hypercorn = Config()
+        config_hypercorn.bind = [f"0.0.0.0:{app_port}"]
+        config_hypercorn.workers = 1
+        config_hypercorn.accesslog = "-"  # Log to stdout
+        config_hypercorn.errorlog = "-"   # Log to stderr
+
+        l.info("Using Hypercorn ASGI server (production mode)")
+        asyncio.run(hypercorn.asyncio.serve(app, config_hypercorn))
+    except ImportError:
+        l.warning("Hypercorn not available, using development server")
+        app.run(host="0.0.0.0", port=app_port)

@@ -16,5 +16,6 @@ RUN ls -la /app
 # Install any dependencies specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Run main.py when the container launches
+# Run with hypercorn for production (better than development server)
+# Port is configured via APP_PORT environment variable, handled in main.py startup
 CMD ["python", "/app/main.py"]
