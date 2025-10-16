@@ -38,6 +38,7 @@ def get_env_vars():
         "dc_webhook_url": os.getenv("DC_WEBHOOK_URL", "YOUR DEFAULT DC WEBHOOK"),
         "app_port": os.getenv("APP_PORT", "8095"),
         "test_flag": os.getenv("TEST_FLAG", "false").lower() in ("true", "1"),
+        "discord_bot_token": os.getenv("DISCORD_BOT_TOKEN"),
     }
     return config
 

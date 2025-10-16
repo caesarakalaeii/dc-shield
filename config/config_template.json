@@ -1,0 +1,9 @@
+{
+    "default_server": "YOUR DEFAULT SERVER INVITE",
+    "honeypot_server": "YOUR DEFAULT HONEYPOT INVITE",
+    "dc_logging": true,
+    "dc_webhook_url": "YOUR DEFAULT DC WEBHOOK",
+    "app_port": "8095",
+    "test_flag":  false,
+    "discord_bot_token": null
+}
