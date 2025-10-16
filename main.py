@@ -1064,7 +1064,8 @@ async def index():
             ip_address, default_server, alternative_server_url, request
         )
     except Exception as e:
-        l.error(f"{e}")
+        l.error(f"Error in index route: {e}")
+        return jsonify({"status": "error", "message": "Internal server error"}), 500
 
 
 @app.route("/health")
@@ -1166,7 +1167,8 @@ async def refer(dc_invite):
             ip_address, custom_server, alternative_server_url, request
         )
     except Exception as e:
-        l.error(f"{e}")
+        l.error(f"Error in refer route: {e}")
+        return jsonify({"status": "error", "message": "Internal server error"}), 500
 
 
 @app.route("/<path:dc_invite>/<path:honeypot>")
@@ -1182,7 +1184,8 @@ async def refer_custom(dc_invite, honeypot):
             ip_address, custom_server, custom_honeypot, request
         )
     except Exception as e:
-        l.error(f"{e}")
+        l.error(f"Error in refer_custom route: {e}")
+        return jsonify({"status": "error", "message": "Internal server error"}), 500
 
 
 # Route for serving favicon.ico
