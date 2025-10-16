@@ -315,7 +315,7 @@ class TestCombinedSurveillanceEmbed:
         embed = create_combined_surveillance_embed(data, recognition_info)
 
         recognition_field = next(
-            (f for f in embed["fields"] if "IDENTITY CORRELATION" in f["name"]), None
+            (f for f in embed["fields"] if "IDENTITY SPOOFING DETECTED" in f["name"]), None
         )
         assert recognition_field is not None
         assert "SPOOFING" in recognition_field["value"]
