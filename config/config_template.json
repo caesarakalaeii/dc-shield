@@ -5,5 +5,6 @@
     "dc_webhook_url": "YOUR DEFAULT DC WEBHOOK",
     "app_port": "8095",
     "test_flag":  false,
-    "discord_bot_token": null
+    "discord_bot_token": null,
+    "surveillance_channel_id": null
 }

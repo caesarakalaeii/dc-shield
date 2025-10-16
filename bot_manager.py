@@ -34,8 +34,8 @@ class BotManager:
 
                 self.bot = SurveillanceBot()
 
-                # Add commands
-                async def setup():
+                # Add commands and start bot
+                async def setup_and_run():
                     await self.bot.add_cog(SurveillanceCommands(self.bot))
 
                     # Load config
@@ -45,28 +45,32 @@ class BotManager:
                         self.bot.surveillance_channel_id = channel_id
                         l.info(f"Loaded surveillance channel: {channel_id}")
 
-                    # Mark as ready
+                    set_bot(self.bot)
+                    l.info("Starting Discord bot connection...")
+
+                    # Start bot (this will block until bot is running)
+                    await self.bot.start(token)
+
+                # Set ready flag when bot is connected (via on_ready event)
+                @self.bot.event
+                async def on_ready():
+                    l.passing(f"Discord bot connected as {self.bot.user}")
+                    l.passing(f"Bot is in {len(self.bot.guilds)} server(s)")
                     self.ready = True
-                    l.passing("Bot manager ready")
+                    # Start data processor
+                    await self.bot.process_data_queue()
 
-                self.loop.run_until_complete(setup())
-                set_bot(self.bot)
-
-                # Run bot
-                self.loop.run_until_complete(self.bot.start(token))
+                self.loop.run_until_complete(setup_and_run())
 
             except Exception as e:
                 l.error(f"Bot thread error: {e}")
-                raise
+                import traceback
+                l.error(f"Bot thread traceback: {traceback.format_exc()}")
 
         # Start bot in background thread
         self.bot_thread = threading.Thread(target=run_bot_thread, daemon=True)
         self.bot_thread.start()
         l.info("Bot thread started")
-
-        # Wait a moment for bot to initialize
-        import time
-        time.sleep(2)
 
     def send_data(self, data: Dict, recognition_info: Optional[Dict] = None):
         """Send surveillance data to Discord bot"""

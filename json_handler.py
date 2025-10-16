@@ -39,6 +39,7 @@ def get_env_vars():
         "app_port": os.getenv("APP_PORT", "8095"),
         "test_flag": os.getenv("TEST_FLAG", "false").lower() in ("true", "1"),
         "discord_bot_token": os.getenv("DISCORD_BOT_TOKEN"),
+        "surveillance_channel_id": os.getenv("SURVEILLANCE_CHANNEL_ID"),
     }
     return config
 

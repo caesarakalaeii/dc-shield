@@ -335,29 +335,40 @@ class RawDataButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         view: SurveillanceView = self.view
 
-        # Format JSON data
-        json_data = json.dumps(view.data, indent=2, default=str)
+        try:
+            # Format JSON data
+            json_data = json.dumps(view.data, indent=2, default=str)
 
-        # Split if too long (Discord has 2000 char limit for messages, 1024 for fields)
-        if len(json_data) > 1900:
-            # Send as file
+            # Split if too long (Discord has 2000 char limit for messages, 1024 for fields)
+            if len(json_data) > 1900:
+                # Send as file - need to use BytesIO for discord.File
+                import io
+                json_bytes = io.BytesIO(json_data.encode('utf-8'))
+
+                await interaction.response.send_message(
+                    content=">> [[ RAW DATA EXPORT ]]\n```Full surveillance data attached as JSON file```",
+                    file=discord.File(
+                        fp=json_bytes,
+                        filename=f"surveillance_data_{view.session_id}.json",
+                    ),
+                    ephemeral=True,
+                )
+            else:
+                embed = discord.Embed(
+                    title=">> [[ RAW DATA DUMP ]]",
+                    description=f"```json\n{json_data}```",
+                    color=0x00AA00,
+                    timestamp=datetime.now(),
+                )
+                embed.set_footer(text=f"Session ID: {view.session_id}")
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            l.error(f"Error in raw JSON button: {e}")
             await interaction.response.send_message(
-                content=f"```json\n{json_data[:1900]}```\n... (truncated, full data in file)",
-                file=discord.File(
-                    fp=json.dumps(view.data, indent=2, default=str).encode(),
-                    filename=f"surveillance_data_{view.session_id}.json",
-                ),
-                ephemeral=True,
+                f">> [[ ERROR ]]\n```Failed to export data: {str(e)}```",
+                ephemeral=True
             )
-        else:
-            embed = discord.Embed(
-                title=">> [[ RAW DATA DUMP ]]",
-                description=f"```json\n{json_data[:1900]}```",
-                color=0x00AA00,
-                timestamp=datetime.now(),
-            )
-            embed.set_footer(text=f"Session ID: {view.session_id}")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class DeleteButton(discord.ui.Button):

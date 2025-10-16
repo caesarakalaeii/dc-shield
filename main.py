@@ -1214,6 +1214,16 @@ if __name__ == "__main__":
             }
         )
 
+    # Preload GeoIP database at startup
+    l.info("Preloading GeoIP database...")
+    try:
+        from ip_locator import _load_db
+        _load_db()
+        l.passing("GeoIP database loaded successfully")
+    except Exception as e:
+        l.error(f"Failed to load GeoIP database: {e}")
+        l.warning("Country detection may be delayed on first request")
+
     # Fetch VPN subnets from GitHub with fallback to local file
     vpn_source = "https://raw.githubusercontent.com/X4BNet/lists_vpn/main/ipv4.txt"
     sub_nets = read_subnets_from_file(vpn_source)
@@ -1233,15 +1243,35 @@ if __name__ == "__main__":
     # Initialize Discord bot if bot token is provided
     bot_token = config.get("discord_bot_token")
     if bot_token:
-        l.info("Discord bot token found, initializing bot...")
+        l.info("Discord bot token found, initializing bot in background...")
         try:
-            initialize_bot(bot_token)
-            l.passing("Discord bot initialized successfully")
+            # Initialize bot in background - non-blocking
+            bot_manager = initialize_bot(bot_token)
+
+            # Set surveillance channel if provided in config
+            if channel_id := config.get("surveillance_channel_id"):
+                try:
+                    channel_id_int = int(channel_id)
+                    # Save to bot_config.json for persistence
+                    import json
+                    with open("bot_config.json", "w") as f:
+                        json.dump({"surveillance_channel_id": channel_id_int}, f, indent=2)
+                    l.passing(f"Surveillance channel ID set to: {channel_id_int}")
+                except (ValueError, TypeError):
+                    l.warning(f"Invalid surveillance_channel_id: {channel_id}")
+            else:
+                l.warning("No surveillance_channel_id configured - bot will not send messages")
+                l.info("Set 'surveillance_channel_id' in config or use /setchannel command in Discord")
+
+            l.passing("Discord bot initialization started in background thread")
         except Exception as e:
-            l.error(f"Failed to initialize Discord bot: {e}")
+            l.error(f"Failed to start Discord bot thread: {e}")
+            import traceback
+            l.error(f"Traceback: {traceback.format_exc()}")
             l.warning("Continuing with webhook-only mode")
     else:
         l.warning("No Discord bot token found in config, using webhook-only mode")
         l.info("Add 'discord_bot_token' to config to enable interactive bot features")
 
+    l.passing(f"Starting Quart application on 0.0.0.0:{app_port}")
     app.run(host="0.0.0.0", port=app_port)
