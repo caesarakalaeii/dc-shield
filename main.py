@@ -12,6 +12,7 @@ Dependencies:
 import ipaddress
 import json
 import os
+import asyncio
 import requests
 from datetime import datetime
 from user_agents import parse
