@@ -969,11 +969,22 @@ def get_country(ip_address: str):
         ip_obj = ipaddress.ip_address(ip_address)
         ip_int = int(ip_obj)
         if isinstance(ip_obj, ipaddress.IPv4Address):
-            return _binary_search(ip_int, _ranges_v4, _starts_v4)
+            l.debug(f"Looking up IPv4 address: {ip_address} (int: {ip_int})")
+            result = _binary_search(ip_int, _ranges_v4, _starts_v4)
         else:
-            return _binary_search(ip_int, _ranges_v6, _starts_v6)
+            l.debug(f"Looking up IPv6 address: {ip_address} (int: {ip_int})")
+            l.debug(f"IPv6 ranges available: {len(_ranges_v6)}, starts: {len(_starts_v6)}")
+            result = _binary_search(ip_int, _ranges_v6, _starts_v6)
+
+        if result:
+            l.debug(f"Found country code: {result} for {ip_address}")
+        else:
+            l.warning(f"No country code found for {ip_address}")
+        return result
     except Exception as e:
-        l.error(f"Error fetching country from local DB: {e}")
+        l.error(f"Error fetching country from local DB for {ip_address}: {e}")
+        import traceback
+        l.error(f"Traceback: {traceback.format_exc()}")
         return None
 
 
@@ -985,20 +996,39 @@ def request_ip_location(ip_address: str):
     Deprecated: kept for compatibility. Uses the local DB and returns a dict
     similar to the old API structure.
     """
+    # Detect IP version first
+    try:
+        ip_obj = ipaddress.ip_address(ip_address)
+        ip_version = "6" if isinstance(ip_obj, ipaddress.IPv6Address) else "4"
+        ip_number = str(int(ip_obj))
+    except ValueError as e:
+        l.warning(f"Invalid IP address: {ip_address} - {e}")
+        return {
+            "response_code": "400",
+            "ip_number": "0",
+            "ip_version": "4",
+            "country_name": "Unknown",
+            "country_code2": "XX",
+            "isp": "Unknown",
+        }
+
     cc = get_country(ip_address)
     if cc:
         return {
             "response_code": "200",
             "country_code2": cc,
-            "ip_number": str(int(ipaddress.ip_address(ip_address))),
-            "ip_version": "6" if ":" in ip_address else "4",
+            "ip_number": ip_number,
+            "ip_version": ip_version,
             "country_name": "Unknown",  # We don't have country names in the local DB
             "isp": "Unknown",  # We don't have ISP info in the local DB
         }
+
+    # Country not found but IP is valid
+    l.warning(f"Country not found for {ip_version} address: {ip_address}")
     return {
         "response_code": "404",
-        "ip_number": "0",
-        "ip_version": "4",
+        "ip_number": ip_number,
+        "ip_version": ip_version,
         "country_name": "Unknown",
         "country_code2": "XX",
         "isp": "Unknown",
