@@ -653,6 +653,9 @@ def extract_real_ip(request_obj):
     """
     headers = request_obj.headers
 
+    # Debug: log all headers to troubleshoot IP extraction
+    l.debug(f"All headers: {dict(headers)}")
+
     # Check X-Forwarded-For header first (contains real client IP)
     x_forwarded_for = headers.get("X-Forwarded-For")
     if x_forwarded_for:
