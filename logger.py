@@ -17,6 +17,7 @@ class Logger:
         self.log_name = log_name
         self.console_log = console_log
         self.file_logging = file_logging
+        self.level = level
         if file_logging:
             if file_URI is None:
                 file_URI = (
@@ -96,6 +97,16 @@ class Logger:
                 f"[{self._get_timestamp()}]",
                 "\033[94m {}\033[00m".format("Info:"),
                 "\033[94m {}\033[00m".format(skk),
+            )
+        if self.file_logging:
+            logging.debug(skk)
+
+    def debug(self, skk, printout=True):  # cyan
+        if printout and self.console_log and self.level <= logging.DEBUG:
+            print(
+                f"[{self._get_timestamp()}]",
+                "\033[96m {}\033[00m".format("Debug:"),
+                "\033[96m {}\033[00m".format(skk),
             )
         if self.file_logging:
             logging.debug(skk)
