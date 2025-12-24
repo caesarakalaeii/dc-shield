@@ -1063,9 +1063,18 @@ async def redirect_handler(ip, normal_server, honeypot, request_obj=None):
         else:
             l.info(f"Could not extract real IP, using: {ip}")
 
-    # Use real IP for geolocation
-    country_code = get_country(real_ip)
-    l.info(f"Country code for {real_ip}: {country_code}")
+    # Check for Cloudflare country header first (most reliable)
+    country_code = None
+    if request_obj:
+        cf_country = request_obj.headers.get("Cf-Ipcountry")
+        if cf_country and cf_country != "XX":
+            country_code = cf_country
+            l.info(f"Using Cloudflare country: {country_code} for IP: {real_ip}")
+
+    # Fall back to GeoIP lookup if Cloudflare header not available
+    if not country_code:
+        country_code = get_country(real_ip)
+        l.info(f"Country code from GeoIP for {real_ip}: {country_code}")
 
     # if test flag is set redirect every 2nd request to honeypot
     if test_flag:
