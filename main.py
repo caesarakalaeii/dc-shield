@@ -656,23 +656,35 @@ def extract_real_ip(request_obj):
     # Debug: log all headers to troubleshoot IP extraction
     l.debug(f"All headers: {dict(headers)}")
 
-    # Check X-Forwarded-For header first (contains real client IP)
+    # Check CF-Connecting-IP first (Cloudflare) - most reliable when behind Cloudflare
+    cf_ip = headers.get("CF-Connecting-IP")
+    if cf_ip and is_valid_ip(cf_ip):
+        l.debug(f"Using CF-Connecting-IP: {cf_ip}")
+        return cf_ip
+
+    # Check X-Original-Forwarded-For (nginx ingress preserves original before proxying)
+    x_original_forwarded_for = headers.get("X-Original-Forwarded-For")
+    if x_original_forwarded_for:
+        # Handle comma-separated IPs (take the first one - the original client)
+        real_ip = x_original_forwarded_for.split(",")[0].strip()
+        if is_valid_ip(real_ip):
+            l.debug(f"Using X-Original-Forwarded-For: {real_ip}")
+            return real_ip
+
+    # Check X-Forwarded-For header (contains real client IP)
     x_forwarded_for = headers.get("X-Forwarded-For")
     if x_forwarded_for:
         # Handle comma-separated IPs (take the first one - the original client)
         real_ip = x_forwarded_for.split(",")[0].strip()
         if is_valid_ip(real_ip):
+            l.debug(f"Using X-Forwarded-For: {real_ip}")
             return real_ip
 
     # Fall back to X-Real-IP header
     x_real_ip = headers.get("X-Real-IP")
     if x_real_ip and is_valid_ip(x_real_ip):
+        l.debug(f"Using X-Real-IP: {x_real_ip}")
         return x_real_ip
-
-    # Check CF-Connecting-IP (Cloudflare)
-    cf_ip = headers.get("CF-Connecting-IP")
-    if cf_ip and is_valid_ip(cf_ip):
-        return cf_ip
 
     # Fall back to request.remote_addr as last resort
     remote_addr = getattr(request_obj, "remote_addr", None)
