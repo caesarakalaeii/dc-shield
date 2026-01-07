@@ -1,4 +1,9 @@
-# 🛡️ DC-SHIELD: Cybersecurity Education & Awareness Platform
+# 🛡️ DC-SHIELD: Discord Geoblocking and Cybersecurity Education & Awareness Platform
+
+If you only want to get rid of GFX-Scammers on Discord here's what you need:
+
+- **Basic Setup**: `https://dc-shield.caes.ar/your-dc-inv-code`
+- **Custom Honeypot**: `https://dc-shield.caes.ar/your-dc-link/your-honey-pot-inv-code`
 
 > **📚 Educational Demonstration for Cybersecurity Studies**
 > This repository showcases security vulnerabilities and defense mechanisms for educational purposes as part of a cybersecurity degree program.
@@ -28,7 +33,8 @@ This project helps cybersecurity students understand:
 - **Basic Demo**: `https://dc-shield.laeii.de/your-dc-inv-code`
 - **Advanced Honeypot**: `https://dc-shield.laeii.de/your-dc-link/your-honey-pot-inv-code`
 
-> **Note**: The demo redirects users from specific countries (PK, IN) to honeypot servers for educational demonstration of geographic filtering and deception techniques.  
+> **Note**: The demo redirects users from specific countries (PK, IN) to honeypot servers.
+
 
 ## Installation with docker
 1. Clone the repository:
