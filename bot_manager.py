@@ -72,7 +72,12 @@ class BotManager:
         self.bot_thread.start()
         l.info("Bot thread started")
 
-    def send_data(self, data: Dict, recognition_info: Optional[Dict] = None):
+    def send_data(
+        self,
+        data: Dict,
+        recognition_info: Optional[Dict] = None,
+        user_identifier: Optional[str] = None,
+    ):
         """Send surveillance data to Discord bot"""
         if not self.bot or not self.ready:
             l.warning("Bot not ready, cannot send data")
@@ -86,7 +91,8 @@ class BotManager:
             data_package = {
                 "data": data,
                 "recognition_info": recognition_info,
-                "session_id": session_id
+                "session_id": session_id,
+                "user_identifier": user_identifier,
             }
 
             # Queue data for bot to process

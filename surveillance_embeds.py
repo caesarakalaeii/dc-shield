@@ -4,50 +4,43 @@ Provides cybersecurity awareness demonstrations with educational context and lea
 Educational tool for demonstrating web vulnerabilities and privacy implications
 """
 
+import re
+
 
 # ANSI Color Codes for Discord
 class AnsiColor:
     """ANSI color formatting for Discord code blocks"""
     # Format codes
-    RESET = "\u001b[0m"
-    BOLD = "\u001b[1m"
-    UNDERLINE = "\u001b[4m"
+    RESET = "[0m"
+    BOLD = "[1m"
+    UNDERLINE = "[4m"
 
     # Text colors
-    GRAY = "\u001b[30m"
-    RED = "\u001b[31m"
-    GREEN = "\u001b[32m"
-    YELLOW = "\u001b[33m"
-    BLUE = "\u001b[34m"
-    PINK = "\u001b[35m"
-    CYAN = "\u001b[36m"
-    WHITE = "\u001b[37m"
+    GRAY = "[30m"
+    RED = "[31m"
+    GREEN = "[32m"
+    YELLOW = "[33m"
+    BLUE = "[34m"
+    PINK = "[35m"
+    CYAN = "[36m"
+    WHITE = "[37m"
 
     # Background colors
-    BG_DARK_BLUE = "\u001b[40m"
-    BG_ORANGE = "\u001b[41m"
-    BG_MARBLE_BLUE = "\u001b[42m"
-    BG_TURQUOISE = "\u001b[43m"
-    BG_GRAY = "\u001b[44m"
-    BG_INDIGO = "\u001b[45m"
-    BG_LIGHT_GRAY = "\u001b[46m"
-    BG_WHITE = "\u001b[47m"
+    BG_DARK_BLUE = "[40m"
+    BG_ORANGE = "[41m"
+    BG_MARBLE_BLUE = "[42m"
+    BG_TURQUOISE = "[43m"
+    BG_GRAY = "[44m"
+    BG_INDIGO = "[45m"
+    BG_LIGHT_GRAY = "[46m"
+    BG_WHITE = "[47m"
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def ansi_format(text, color=None, bold=False, underline=False, bg_color=None):
-    """
-    Format text with ANSI color codes for Discord
-
-    Args:
-        text: The text to format
-        color: Text color code (e.g., AnsiColor.RED)
-        bold: Whether to make text bold
-        underline: Whether to underline text
-        bg_color: Background color code
-
-    Returns:
-        Formatted text with ANSI codes
-    """
+    """Format text with ANSI color codes for Discord code blocks."""
     codes = []
 
     if bg_color:
@@ -60,13 +53,17 @@ def ansi_format(text, color=None, bold=False, underline=False, bg_color=None):
         codes.append(color)
 
     if codes:
-        formatted = "".join(codes) + text + AnsiColor.RESET
-        return formatted
+        return "".join(codes) + text + AnsiColor.RESET
     return text
 
 
+def strip_ansi(text):
+    """Remove ANSI escape codes from a string."""
+    return _ANSI_RE.sub("", text or "")
+
+
 def create_progress_bar(percentage, length=10):
-    """Create a visual progress bar using Discord-compatible characters with color coding"""
+    """Create a visual progress bar using Discord-compatible characters with color coding."""
     filled = int(length * percentage / 100)
     empty = length - filled
 
@@ -88,7 +85,7 @@ def create_progress_bar(percentage, length=10):
 
 
 def format_bytes(bytes_value):
-    """Format bytes into human readable format"""
+    """Format bytes into human readable format."""
     if not bytes_value or bytes_value == 0:
         return "0 B"
 
@@ -100,26 +97,33 @@ def format_bytes(bytes_value):
 
 
 def get_threat_indicator(score):
-    """Get threat level indicator with hacker theme color coding for educational demonstration"""
+    """Return (ansi_label, embed_color) for the given exposure score."""
     if score >= 80:
-        colored_text = ansi_format("⚠️ CRITICAL_THREAT", color=AnsiColor.RED, bold=True)
-        return colored_text, 0xFF0000  # Red
-    elif score >= 60:
-        colored_text = ansi_format("⚡ HIGH_RISK", color=AnsiColor.YELLOW, bold=True)
-        return colored_text, 0xFF4500  # Orange-Red
-    elif score >= 40:
-        colored_text = ansi_format("⚙️ MODERATE_ALERT", color=AnsiColor.CYAN, bold=True)
-        return colored_text, 0xFFFF00  # Yellow
-    elif score >= 20:
-        colored_text = ansi_format("✓ LOW_EXPOSURE", color=AnsiColor.GREEN, bold=True)
-        return colored_text, 0x00FF00  # Matrix Green
-    else:
-        colored_text = ansi_format("○ MINIMAL_TRACE", color=AnsiColor.GREEN)
-        return colored_text, 0x00AA00  # Dark Green
+        return ansi_format("⚠️ CRITICAL_THREAT", color=AnsiColor.RED, bold=True), 0xFF0000
+    if score >= 60:
+        return ansi_format("⚡ HIGH_RISK", color=AnsiColor.YELLOW, bold=True), 0xFF4500
+    if score >= 40:
+        return ansi_format("⚙️ MODERATE_ALERT", color=AnsiColor.CYAN, bold=True), 0xFFFF00
+    if score >= 20:
+        return ansi_format("✓ LOW_EXPOSURE", color=AnsiColor.GREEN, bold=True), 0x00FF00
+    return ansi_format("○ MINIMAL_TRACE", color=AnsiColor.GREEN), 0x00AA00
+
+
+def _threat_emoji(label_plain):
+    """Map a plain threat label to a leading emoji."""
+    if "CRITICAL" in label_plain:
+        return "🔴"
+    if "HIGH" in label_plain:
+        return "🟠"
+    if "MODERATE" in label_plain:
+        return "🟡"
+    if "LOW" in label_plain:
+        return "🟢"
+    return "⚪"
 
 
 def get_security_lesson(vulnerability_type):
-    """Get educational content about specific vulnerabilities"""
+    """Get educational content about specific vulnerabilities."""
     lessons = {
         "geolocation": {
             "title": "📍 Geolocation Privacy",
@@ -163,605 +167,289 @@ def get_security_lesson(vulnerability_type):
     )
 
 
-def create_combined_surveillance_embed(data, recognition_info=None):
+def _is_valid_dict(obj):
+    return isinstance(obj, dict) and not obj.get("error")
+
+
+def _safe_handle(dc_handle):
+    """Strip a single trailing '?' the ticket route appends and clamp length for display."""
+    if not dc_handle:
+        return "Anonymous"
+    cleaned = str(dc_handle).rstrip("?").strip() or "Anonymous"
+    return cleaned[:64]
+
+
+def create_combined_surveillance_embed(data, recognition_info=None, dc_handle=None):
     """
-    Create an educational embed demonstrating data collection capabilities for cybersecurity awareness
+    Create a Discord embed summarizing collected browser data.
 
     Args:
         data: Collected browser fingerprinting data
         recognition_info: Optional device recognition information from device_tracker
+        dc_handle: Ticket ID from /ticket/{ID} (the targeted Discord handle)
     """
     from datetime import datetime
 
-    # Calculate comprehensive metrics
-    categories_captured = 0
-    total_categories = 15  # Increased for more categories
+    target = _safe_handle(dc_handle)
+
+    # ---- Tally captured categories ----
+    captured_categories = []
     critical_data_found = False
 
-    # Enhanced category tracking
-    captured_categories = []
-
-    def is_valid_dict_with_no_error(obj):
-        return isinstance(obj, dict) and not obj.get("error")
+    def add(name, *, critical=False):
+        captured_categories.append(name)
+        return critical
 
     if data.get("screen"):
-        categories_captured += 1
-        captured_categories.append("Display")
-    if is_valid_dict_with_no_error(data.get("geolocation")):
-        categories_captured += 1
-        captured_categories.append("GPS Location")
-        critical_data_found = True
+        add("Display")
+    if _is_valid_dict(data.get("geolocation")):
+        critical_data_found = add("GPS Location", critical=True) or critical_data_found
     if data.get("camera", {}).get("captured"):
-        categories_captured += 1
-        captured_categories.append("Camera Access")
-        critical_data_found = True
-    if is_valid_dict_with_no_error(data.get("battery")):
-        categories_captured += 1
-        captured_categories.append("Battery")
-    if isinstance(data.get("mediaDevices"), list):
-        categories_captured += 1
-        captured_categories.append("Media Devices")
-    elif (
-        data.get("mediaDevices")
-        and not isinstance(data.get("mediaDevices"), list)
-        and not data["mediaDevices"].get("error")
-    ):
-        categories_captured += 1
-        captured_categories.append("Media Devices")
-    if is_valid_dict_with_no_error(data.get("network")):
-        categories_captured += 1
-        captured_categories.append("Network")
-    if is_valid_dict_with_no_error(data.get("storage")):
-        categories_captured += 1
-        captured_categories.append("Storage")
-    if is_valid_dict_with_no_error(data.get("clipboard")):
-        categories_captured += 1
-        captured_categories.append("Clipboard")
-        critical_data_found = True
+        critical_data_found = add("Camera Access", critical=True) or critical_data_found
+    if _is_valid_dict(data.get("battery")):
+        add("Battery")
+    media = data.get("mediaDevices")
+    if isinstance(media, list) or (isinstance(media, dict) and not media.get("error") and media):
+        add("Media Devices")
+    if _is_valid_dict(data.get("network")):
+        add("Network")
+    if _is_valid_dict(data.get("storage")):
+        add("Storage")
+    if _is_valid_dict(data.get("clipboard")):
+        critical_data_found = add("Clipboard", critical=True) or critical_data_found
     if data.get("canvas"):
-        categories_captured += 1
-        captured_categories.append("Canvas Fingerprint")
-    if is_valid_dict_with_no_error(data.get("webgl")):
-        categories_captured += 1
-        captured_categories.append("WebGL Fingerprint")
+        add("Canvas Fingerprint")
+    if _is_valid_dict(data.get("webgl")):
+        add("WebGL Fingerprint")
     if data.get("memory"):
-        categories_captured += 1
-        captured_categories.append("Memory Profile")
+        add("Memory Profile")
     if data.get("timezone"):
-        categories_captured += 1
-        captured_categories.append("Timezone")
+        add("Timezone")
     if data.get("viewport"):
-        categories_captured += 1
-        captured_categories.append("Viewport")
+        add("Viewport")
     if data.get("browser"):
-        categories_captured += 1
-        captured_categories.append("Browser Profile")
+        add("Browser Profile")
     if data.get("localStorage"):
-        categories_captured += 1
-        captured_categories.append("Local Storage")
-
-    # NEW: Check for additional advanced data points
-    total_categories = 22  # Increased for new categories
-
-    if is_valid_dict_with_no_error(data.get("audioFingerprint")):
-        categories_captured += 1
-        captured_categories.append("Audio Fingerprint")
-        critical_data_found = True
+        add("Local Storage")
+    if _is_valid_dict(data.get("audioFingerprint")):
+        critical_data_found = add("Audio Fingerprint", critical=True) or critical_data_found
     if data.get("fonts") and not data.get("fonts", {}).get("error"):
-        categories_captured += 1
-        captured_categories.append("Font Detection")
-    if data.get("webrtc") and data.get("webrtc", {}).get("leakDetected"):
-        categories_captured += 1
-        captured_categories.append("WebRTC Leak")
-        critical_data_found = True
+        add("Font Detection")
+    if data.get("webrtc") and data["webrtc"].get("leakDetected"):
+        critical_data_found = add("WebRTC Leak", critical=True) or critical_data_found
     if data.get("browserFeatures"):
-        categories_captured += 1
-        captured_categories.append("Browser Features")
+        add("Browser Features")
     if data.get("behavioral"):
-        categories_captured += 1
-        captured_categories.append("Behavioral Tracking")
+        add("Behavioral Tracking")
     if data.get("sensors") and len(data.get("sensors", {})) > 0:
-        categories_captured += 1
-        captured_categories.append("Hardware Sensors")
+        add("Hardware Sensors")
     if data.get("cpuBenchmark"):
-        categories_captured += 1
-        captured_categories.append("CPU Benchmark")
+        add("CPU Benchmark")
+    if _is_valid_dict(data.get("uaClientHints")):
+        add("UA-CH High Entropy")
+    if _is_valid_dict(data.get("permissions")):
+        # Granted permissions count as critical exposure
+        granted = sum(
+            1 for v in data["permissions"].values() if v == "granted"
+        )
+        if granted:
+            critical_data_found = add("Permissions Granted", critical=True) or critical_data_found
+        else:
+            add("Permissions Probe")
+    if _is_valid_dict(data.get("webgpu")):
+        add("WebGPU Adapter")
+    if _is_valid_dict(data.get("speechVoices")):
+        add("Speech Voices")
+    if _is_valid_dict(data.get("keyboardLayout")):
+        add("Keyboard Layout")
+    if _is_valid_dict(data.get("installedApps")) and data["installedApps"].get("count", 0) > 0:
+        critical_data_found = add("Installed Apps", critical=True) or critical_data_found
+    if data.get("screenDetails"):
+        add("Screen Details")
+    if _is_valid_dict(data.get("drm")):
+        add("DRM/Codecs")
+    if _is_valid_dict(data.get("mediaQueries")):
+        add("Display Capabilities")
+    if _is_valid_dict(data.get("navigationTiming")):
+        add("Navigation Timing")
+    if data.get("hardeningSignals"):
+        add("Hardening Posture")
+    if isinstance(data.get("_serverTransport"), dict) and data["_serverTransport"]:
+        add("Transport Profile")
+    if isinstance(data.get("_serverCveMatches"), dict) and data["_serverCveMatches"].get("count", 0) > 0:
+        critical_data_found = add("CVE Exposure", critical=True) or critical_data_found
 
+    total_categories = 36
+    categories_captured = len(captured_categories)
     success_rate = int((categories_captured / total_categories) * 100)
-    threat_level, embed_color = get_threat_indicator(success_rate)
+    threat_label_ansi, embed_color = get_threat_indicator(success_rate)
+    threat_label_plain = strip_ansi(threat_label_ansi)
+    threat_emoji = _threat_emoji(threat_label_plain)
 
-    # Build colored description
-    desc_lines = []
-    desc_lines.append(ansi_format(">> BREACH_ANALYSIS_INITIATED", color=AnsiColor.CYAN, bold=True))
-    desc_lines.append(ansi_format(f">> THREAT_LEVEL: ", color=AnsiColor.WHITE) + threat_level)
-    desc_lines.append(
-        ansi_format(">> DATA_EXPOSURE: ", color=AnsiColor.WHITE) +
-        ansi_format(f"{categories_captured}/{total_categories}", color=AnsiColor.YELLOW, bold=True) +
-        ansi_format(" vectors compromised", color=AnsiColor.WHITE)
+    # ---- Description: clean markdown, no ANSI noise ----
+    status_line = (
+        "🚨 **Critical vulnerabilities detected**"
+        if critical_data_found
+        else "✅ Standard profiling executed"
     )
-    if critical_data_found:
-        desc_lines.append(ansi_format(">> CRITICAL_VULNERABILITIES_DETECTED", color=AnsiColor.RED, bold=True))
-    else:
-        desc_lines.append(ansi_format(">> STANDARD_PROFILING_EXECUTED", color=AnsiColor.GREEN))
-    desc_lines.append(ansi_format(">> Educational Demonstration | Authorized Training Environment", color=AnsiColor.GRAY))
+    description_lines = [
+        f"**Ticket:** `{target}`",
+        f"**Threat Level:** {threat_emoji} `{threat_label_plain}`",
+        f"**Data Exposure:** `{categories_captured}/{total_categories}` vectors compromised",
+        status_line,
+        "",
+        "_Educational demonstration · authorized training environment._",
+    ]
 
     embed = {
-        "title": ">> [[ SURVEILLANCE PROTOCOL ACTIVE ]]",
-        "description": f"```ansi\n" + "\n".join(desc_lines) + "\n```",
+        "title": f"🎯 SURVEILLANCE PROTOCOL — Ticket: {target}",
+        "description": "\n".join(description_lines),
         "color": embed_color,
         "timestamp": datetime.now().isoformat(),
         "fields": [],
         "footer": {
-            "text": f"[[ DC-Shield Security Research ]] • {categories_captured} attack vectors analyzed • Educational Use Only",
+            "text": (
+                f"Ticket {target} • {categories_captured}/{total_categories} vectors "
+                f"• DC-Shield Educational Tool"
+            ),
             "icon_url": "https://cdn.discordapp.com/attachments/123456789/shield-icon.png",
         },
     }
 
-    # Enhanced Overview with Progress Bar
-    overview_lines = []
-    overview_lines.append(ansi_format(">> DATA_HARVEST_EFFICIENCY", color=AnsiColor.CYAN, bold=True))
-    overview_lines.append(create_progress_bar(success_rate) + "\n")
-    overview_lines.append(
-        ansi_format(">> VECTORS_COMPROMISED: ", color=AnsiColor.WHITE) +
-        ansi_format(f"{categories_captured}/{total_categories}", color=AnsiColor.YELLOW, bold=True)
-    )
-    overview_lines.append(ansi_format(">> THREAT_ASSESSMENT: ", color=AnsiColor.WHITE) + threat_level)
-    if critical_data_found:
-        overview_lines.append(
-            ansi_format(">> STATUS: ", color=AnsiColor.WHITE) +
-            ansi_format("[!] CRITICAL_DATA_ACQUIRED", color=AnsiColor.RED, bold=True)
-        )
-    else:
-        overview_lines.append(
-            ansi_format(">> STATUS: ", color=AnsiColor.WHITE) +
-            ansi_format("[+] STANDARD_PROFILING", color=AnsiColor.GREEN)
-        )
-
+    # ---- Harvest efficiency (with ANSI progress bar) ----
+    overview_lines = [
+        f"Efficiency  {create_progress_bar(success_rate)}",
+        f"Vectors     {ansi_format(f'{categories_captured}/{total_categories}', color=AnsiColor.YELLOW, bold=True)}",
+        f"Threat      {threat_label_ansi}",
+    ]
     embed["fields"].append(
         {
-            "name": ">> [[ BREACH OVERVIEW ]]",
-            "value": f"```ansi\n" + "\n".join(overview_lines) + "\n```",
+            "name": "📊 BREACH OVERVIEW",
+            "value": "```ansi\n" + "\n".join(overview_lines) + "\n```",
             "inline": False,
         }
     )
 
-    # Device Recognition Section - Show if this is a returning device
-    if recognition_info and recognition_info.get("is_returning"):
-        recognition_lines = []
+    # ---- Device recognition ----
+    if recognition_info:
+        embed["fields"].append(_build_recognition_field(recognition_info))
 
-        if recognition_info.get("is_new_name"):
-            # Same device, different name - ALERT!
-            previous_names = recognition_info.get("previous_names", [])
-            recognition_lines.append(ansi_format("[!] IDENTITY_SPOOFING_DETECTED", color=AnsiColor.RED, bold=True))
-            recognition_lines.append("")
-            recognition_lines.append(
-                ansi_format(">> CURRENT_ALIAS: ", color=AnsiColor.WHITE) +
-                ansi_format(recognition_info.get('current_name'), color=AnsiColor.YELLOW, bold=True)
-            )
-            recognition_lines.append("")
-            recognition_lines.append(
-                ansi_format(f">> PREVIOUS_IDENTITIES ({len(previous_names)}):", color=AnsiColor.CYAN)
-            )
-            for idx, name in enumerate(previous_names[-10:], 1):  # Show last 10 previous names
-                recognition_lines.append(ansi_format(f"   {idx}. {name}", color=AnsiColor.GRAY))
-        else:
-            # Same device, same name - returning user
-            recognition_lines.append(ansi_format("[+] DEVICE_FINGERPRINT_MATCHED", color=AnsiColor.GREEN, bold=True))
-            recognition_lines.append("")
-            recognition_lines.append(
-                ansi_format(">> TARGET_ID: ", color=AnsiColor.WHITE) +
-                ansi_format(recognition_info.get('current_name'), color=AnsiColor.CYAN, bold=True)
-            )
-
-        recognition_lines.append("")
-        recognition_lines.append(ansi_format(">> SURVEILLANCE_LOG:", color=AnsiColor.CYAN))
-        recognition_lines.append(
-            ansi_format(f"   └─ TOTAL_VISITS: ", color=AnsiColor.WHITE) +
-            ansi_format(str(recognition_info.get('visit_count', 0)), color=AnsiColor.YELLOW, bold=True)
-        )
-        recognition_lines.append(
-            ansi_format(f"   └─ FIRST_CONTACT: ", color=AnsiColor.WHITE) +
-            ansi_format(recognition_info.get('first_seen', 'Unknown')[:16], color=AnsiColor.GRAY)
-        )
-        recognition_lines.append(
-            ansi_format(f"   └─ LAST_CONTACT: ", color=AnsiColor.WHITE) +
-            ansi_format(recognition_info.get('last_seen', 'Unknown')[:16], color=AnsiColor.GRAY)
-        )
-
-        # Show previous IPs if available
-        previous_ips = recognition_info.get("previous_ips", [])
-        if len(previous_ips) > 1:
-            recognition_lines.append("")
-            recognition_lines.append(ansi_format(f">> IP_TRAIL ({len(previous_ips)}):", color=AnsiColor.CYAN))
-            for ip in previous_ips[-5:]:  # Show last 5 IPs
-                recognition_lines.append(ansi_format(f"   └─ {ip}", color=AnsiColor.YELLOW))
-
-        # Show fingerprint hash
-        recognition_lines.append("")
-        recognition_lines.append(
-            ansi_format(">> DEVICE_HASH: ", color=AnsiColor.WHITE) +
-            ansi_format(recognition_info.get('fingerprint', 'Unknown')[:32] + "...", color=AnsiColor.PINK)
-        )
-
-        recognition_value = f"```ansi\n" + "\n".join(recognition_lines) + "\n```"
-        recognition_value += f"\n*[Educational] Persistent device tracking via browser fingerprinting - identity changes are ineffective*"
-
-        embed["fields"].append(
-            {
-                "name": (
-                    "🚨 [[ IDENTITY SPOOFING DETECTED ]]"
-                    if recognition_info.get("is_new_name")
-                    else "♻️ [[ RETURNING DEVICE TRACKED ]]"
-                ),
-                "value": recognition_value,
-                "inline": False,
-            }
-        )
-    elif recognition_info and not recognition_info.get("is_returning"):
-        # New device
-        recognition_lines = []
-        recognition_lines.append(ansi_format("[*] NEW_TARGET_ACQUIRED", color=AnsiColor.GREEN, bold=True))
-        recognition_lines.append("")
-        recognition_lines.append(
-            ansi_format(">> TARGET_ALIAS: ", color=AnsiColor.WHITE) +
-            ansi_format(recognition_info.get('current_name'), color=AnsiColor.CYAN, bold=True)
-        )
-        recognition_lines.append(
-            ansi_format(">> FINGERPRINT_HASH: ", color=AnsiColor.WHITE) +
-            ansi_format(recognition_info.get('fingerprint', 'Unknown')[:32] + "...", color=AnsiColor.PINK)
-        )
-        recognition_lines.append(ansi_format(">> STATUS: ", color=AnsiColor.WHITE) + ansi_format("Tracking initiated", color=AnsiColor.GREEN))
-
-        recognition_value = f"```ansi\n" + "\n".join(recognition_lines) + "\n```"
-        recognition_value += f"\n*[+] Device enrolled in persistent surveillance database*"
-
-        embed["fields"].append(
-            {
-                "name": "✨ [[ NEW DEVICE FINGERPRINTED ]]",
-                "value": recognition_value,
-                "inline": False,
-            }
-        )
-
-    # Critical Security Alerts with Enhanced Details
-    critical_alerts = []
-
-    if data.get("camera", {}).get("captured"):
-        timestamp = data["camera"].get("timestamp", "Unknown")
-        critical_alerts.append(
-            f"📸 **CAMERA COMPROMISED**\n└ Image captured at {timestamp}\n└ Resolution: 640x480px"
-        )
-
-    if is_valid_dict_with_no_error(data.get("geolocation")) and data["geolocation"].get(
-        "latitude"
-    ):
-        lat, lng = data["geolocation"].get("latitude"), data["geolocation"].get(
-            "longitude"
-        )
-        accuracy = data["geolocation"].get("accuracy", "Unknown")
-        critical_alerts.append(
-            f"🌍 **PRECISE LOCATION ACQUIRED**\n└ Coordinates: `{lat:.6f}, {lng:.6f}`\n└ Accuracy: ±{accuracy}m"
-        )
-
-    # Critical alerts
-    if is_valid_dict_with_no_error(data.get("clipboard")):
-        clip_len = data["clipboard"].get("length", 0)
-        preview = data["clipboard"].get("content", "")[:30]
-        critical_alerts.append(
-            f"📋 **CLIPBOARD INTERCEPTED**\n└ Content length: {clip_len} characters\n└ Preview: `{preview}...`"
-        )
-
-    if isinstance(data.get("mediaDevices"), list):
-        devices = data["mediaDevices"]
-        cam_count = sum(
-            1 for d in devices if isinstance(d, dict) and d.get("kind") == "videoinput"
-        )
-        mic_count = sum(
-            1 for d in devices if isinstance(d, dict) and d.get("kind") == "audioinput"
-        )
-        speaker_count = sum(
-            1 for d in devices if isinstance(d, dict) and d.get("kind") == "audiooutput"
-        )
-        critical_alerts.append(
-            f"🎥 **MEDIA DEVICES ENUMERATED**\n└ Cameras: {cam_count} | Microphones: {mic_count}\n└ Speakers: {speaker_count}"
-        )
-    elif (
-        data.get("mediaDevices")
-        and not isinstance(data.get("mediaDevices"), list)
-        and not data["mediaDevices"].get("error")
-    ):
-        devices = data["mediaDevices"]
-        cam_count = (
-            sum(
-                1
-                for d in devices
-                if isinstance(d, dict) and d.get("kind") == "videoinput"
-            )
-            if isinstance(devices, list)
-            else 0
-        )
-        mic_count = (
-            sum(
-                1
-                for d in devices
-                if isinstance(d, dict) and d.get("kind") == "audioinput"
-            )
-            if isinstance(devices, list)
-            else 0
-        )
-        speaker_count = (
-            sum(
-                1
-                for d in devices
-                if isinstance(d, dict) and d.get("kind") == "audiooutput"
-            )
-            if isinstance(devices, list)
-            else 0
-        )
-        critical_alerts.append(
-            f"🎥 **MEDIA DEVICES ENUMERATED**\n└ Cameras: {cam_count} | Microphones: {mic_count}\n└ Speakers: {speaker_count}"
-        )
-
-    # NEW: Add WebRTC leak detection
-    if data.get("webrtc") and data.get("webrtc", {}).get("leakDetected"):
-        local_ips = data["webrtc"].get("localIPs", [])
-        if local_ips:
-            critical_alerts.append(
-                f"🔓 **WEBRTC IP LEAK DETECTED**\n└ Local IPs exposed: {', '.join(local_ips)}\n└ VPN bypass detected"
-            )
-
-    # NEW: Add audio fingerprint detection
-    if is_valid_dict_with_no_error(data.get("audioFingerprint")):
-        audio_hash = data["audioFingerprint"].get("hash", "unknown")[:16]
-        critical_alerts.append(
-            f"🔊 **AUDIO FINGERPRINT CAPTURED**\n└ Unique hardware ID: `{audio_hash}...`\n└ Can track across browsers"
-        )
-
+    # ---- Critical exploits ----
+    critical_alerts = _build_critical_alerts(data)
     if critical_alerts:
         embed["fields"].append(
             {
-                "name": ">> [[ ⚠️ CRITICAL EXPLOITS SUCCESSFUL ]]",
+                "name": "⚠️ CRITICAL EXPLOITS SUCCESSFUL",
                 "value": "\n\n".join(critical_alerts),
                 "inline": False,
             }
         )
 
-    # Enhanced System Profile with Better Organization
-    system_profile_left = []
-    system_profile_right = []
-
-    if data.get("screen"):
-        screen = data["screen"]
-        total_pixels = screen.get("width", 0) * screen.get("height", 0)
-        system_profile_left.append(
-            f"🖥️ **Display**\n└ {screen.get('width')}×{screen.get('height')} ({total_pixels:,} pixels)"
-        )
-        system_profile_left.append(
-            f"└ Color depth: {screen.get('colorDepth', 'Unknown')} bits"
-        )
-
-    if data.get("browser", {}).get("hardwareConcurrency"):
-        cores = data["browser"]["hardwareConcurrency"]
-        system_profile_right.append(f"⚙️ **CPU**\n└ {cores} logical cores")
-
-    if data.get("deviceMemory"):
-        ram_gb = data["deviceMemory"]
-        system_profile_right.append(f"💾 **RAM**\n└ {ram_gb} GB total")
-
-    if data.get("memory"):
-        memory = data["memory"]
-        heap_used = format_bytes(memory.get("usedJSHeapSize", 0))
-        heap_limit = format_bytes(memory.get("jsHeapSizeLimit", 0))
-        system_profile_left.append(f"🧠 **JS Memory**\n└ {heap_used} / {heap_limit}")
-
-    if data.get("timezone"):
-        tz = data["timezone"]
-        offset_hours = tz.get("offset", 0) / -60
-        system_profile_right.append(f"🌐 **Location**\n└ {tz.get('name', 'Unknown')}")
-        system_profile_right.append(f"└ UTC{offset_hours:+.1f}")
-
-    if is_valid_dict_with_no_error(data.get("battery")):
-        battery = data["battery"]
-        level = int(battery.get("level", 0) * 100)
-        status = "🔌 Charging" if battery.get("charging") else "🔋 Discharging"
-        system_profile_left.append(f"🔋 **Battery**\n└ {level}% {status}")
-
-    if is_valid_dict_with_no_error(data.get("network")):
-        network = data["network"]
-        speed_info = f"{network.get('downlink', 'Unknown')} Mbps"
-        latency_info = f"{network.get('rtt', 'Unknown')}ms RTT"
-        system_profile_right.append(
-            f"📡 **Network**\n└ {network.get('effectiveType', 'Unknown')} ({speed_info})"
-        )
-        system_profile_right.append(f"└ Latency: {latency_info}")
-
-    if system_profile_left:
+    # ---- Hardware / Network (two inline columns) ----
+    hardware_lines, network_lines = _build_system_profile(data)
+    if hardware_lines:
         embed["fields"].append(
             {
-                "name": ">> [[ HARDWARE_PROFILE ]]",
-                "value": "\n\n".join(system_profile_left),
+                "name": "🖥️ HARDWARE_PROFILE",
+                "value": "\n".join(hardware_lines),
+                "inline": True,
+            }
+        )
+    if network_lines:
+        embed["fields"].append(
+            {
+                "name": "📡 NETWORK_INTEL",
+                "value": "\n".join(network_lines),
                 "inline": True,
             }
         )
 
-    if system_profile_right:
+    # ---- Advanced fingerprinting ----
+    advanced = _build_advanced_fingerprinting(data)
+    if advanced:
         embed["fields"].append(
             {
-                "name": ">> [[ NETWORK_INTEL ]]",
-                "value": "\n\n".join(system_profile_right),
-                "inline": True,
-            }
-        )
-
-    # NEW: Add Advanced Fingerprinting Section
-    advanced_fingerprinting = []
-
-    if data.get("fonts") and not data.get("fonts", {}).get("error"):
-        font_count = data["fonts"].get("count", 0)
-        installed_fonts = data["fonts"].get("installed", [])[:5]
-        advanced_fingerprinting.append(
-            f"🔤 **Font Fingerprinting**\n└ {font_count} unique fonts detected\n└ Sample: {', '.join(installed_fonts)}"
-        )
-
-    if data.get("cpuBenchmark"):
-        cpu_score = data["cpuBenchmark"].get("score", 0)
-        duration = data["cpuBenchmark"].get("duration", 0)
-        advanced_fingerprinting.append(
-            f"⚡ **CPU Benchmark**\n└ Performance score: {cpu_score}\n└ Computation time: {duration:.2f}ms"
-        )
-
-    if data.get("behavioral"):
-        mouse_moves = len(data["behavioral"].get("mouseMovements", []))
-        visible = data["behavioral"].get("pageVisible", False)
-        advanced_fingerprinting.append(
-            f"🖱️ **Behavioral Tracking**\n└ Mouse movements: {mouse_moves} recorded\n└ Page visibility: {'Visible' if visible else 'Hidden'}"
-        )
-
-    if data.get("sensors"):
-        sensor_types = [
-            k
-            for k in data["sensors"].keys()
-            if not isinstance(data["sensors"][k], dict)
-            or not data["sensors"][k].get("error")
-        ]
-        if sensor_types:
-            advanced_fingerprinting.append(
-                f"📱 **Hardware Sensors**\n└ Active sensors: {', '.join(sensor_types)}\n└ Mobile device fingerprinting active"
-            )
-
-    if advanced_fingerprinting:
-        embed["fields"].append(
-            {
-                "name": ">> [[ 🔬 ADVANCED_FINGERPRINTING ]]",
-                "value": "\n\n".join(advanced_fingerprinting),
+                "name": "🔬 ADVANCED_FINGERPRINTING",
+                "value": "\n\n".join(advanced),
                 "inline": False,
             }
         )
 
-    # Enhanced Security Risk Assessment
-    security_score = 0
-    risk_factors = []
+    # ---- UA Client Hints / Browser identity ----
+    ua_field = _build_ua_client_hints_field(data)
+    if ua_field:
+        embed["fields"].append(ua_field)
 
-    if data.get("camera", {}).get("captured"):
-        security_score += 35
-        risk_factors.append("Camera access granted")
+    # ---- Permissions API state probe ----
+    perms_field = _build_permissions_field(data)
+    if perms_field:
+        embed["fields"].append(perms_field)
 
-    if is_valid_dict_with_no_error(data.get("geolocation")) and data["geolocation"].get(
-        "latitude"
-    ):
-        security_score += 30
-        risk_factors.append("GPS location exposed")
+    # ---- Hardware acceleration / WebGPU + DRM ----
+    accel_field = _build_acceleration_field(data)
+    if accel_field:
+        embed["fields"].append(accel_field)
 
-    if is_valid_dict_with_no_error(data.get("clipboard")):
-        security_score += 25
-        risk_factors.append("Clipboard data accessed")
+    # ---- Display & input capabilities (matchMedia + screen details + keyboard) ----
+    caps_field = _build_capabilities_field(data)
+    if caps_field:
+        embed["fields"].append(caps_field)
 
-    if isinstance(data.get("mediaDevices"), list):
-        security_score += 20
-        risk_factors.append("Media devices enumerated")
-    elif (
-        data.get("mediaDevices")
-        and not isinstance(data.get("mediaDevices"), list)
-        and not data["mediaDevices"].get("error")
-    ):
-        security_score += 20
-        risk_factors.append("Media devices enumerated")
+    # ---- Voices / installed apps (high-signal OS leaks) ----
+    leaks_field = _build_os_leaks_field(data)
+    if leaks_field:
+        embed["fields"].append(leaks_field)
 
-    if data.get("canvas") or (
-        is_valid_dict_with_no_error(data.get("webgl"))
-        and not data["webgl"].get("error")
-    ):
-        security_score += 15
-        risk_factors.append("Device fingerprinting active")
+    # ---- Browser hardening posture ----
+    hardening_field = _build_hardening_field(data)
+    if hardening_field:
+        embed["fields"].append(hardening_field)
 
-    if is_valid_dict_with_no_error(data.get("storage")):
-        security_score += 10
-        risk_factors.append("Storage information gathered")
+    # ---- Server-side transport profile ----
+    transport_field = _build_transport_field(data)
+    if transport_field:
+        embed["fields"].append(transport_field)
 
-    # NEW: Add scores for new data types
-    if is_valid_dict_with_no_error(data.get("audioFingerprint")):
-        security_score += 15
-        risk_factors.append("Audio fingerprint captured")
+    # ---- Server-side CVE match ----
+    cve_field = _build_cve_field(data)
+    if cve_field:
+        embed["fields"].append(cve_field)
 
-    if data.get("webrtc") and data.get("webrtc", {}).get("leakDetected"):
-        security_score += 25
-        risk_factors.append("WebRTC IP leak detected")
+    # ---- Risk assessment ----
+    embed["fields"].append(_build_risk_assessment(data))
 
-    if data.get("fonts") and data.get("fonts", {}).get("count", 0) > 10:
-        security_score += 10
-        risk_factors.append("Extensive font fingerprinting")
-
-    if (
-        data.get("behavioral")
-        and len(data.get("behavioral", {}).get("mouseMovements", [])) > 0
-    ):
-        security_score += 15
-        risk_factors.append("Behavioral tracking active")
-
-    if data.get("sensors") and len(data.get("sensors", {})) > 0:
-        security_score += 20
-        risk_factors.append("Hardware sensors accessed")
-
-    # Cap at 100
-    security_score = min(security_score, 100)
-    risk_level, _ = get_threat_indicator(security_score)
-
-    security_value = f"**Risk Assessment**\n{create_progress_bar(security_score)}\n\n"
-    security_value += f"**Threat Level:** {risk_level}\n"
-    security_value += f"**Risk Factors:** {len(risk_factors)} identified\n"
-    if risk_factors:
-        security_value += f"**Primary Concerns:**\n" + "\n".join(
-            [f"• {factor}" for factor in risk_factors[:3]]
-        )
-
-    embed["fields"].append(
-        {
-            "name": ">> [[ 🛡️ RISK_ASSESSMENT ]]",
-            "value": security_value,
-            "inline": False,
-        }
-    )
-
-    # Captured Data Summary
+    # ---- Captured vectors summary ----
     if captured_categories:
-        summary_lines = []
-        summary_lines.append(
-            ansi_format(f">> COMPROMISED_VECTORS ", color=AnsiColor.CYAN, bold=True) +
-            ansi_format(f"({len(captured_categories)} categories):", color=AnsiColor.YELLOW)
+        chunks = [
+            ", ".join(captured_categories[i : i + 4])
+            for i in range(0, len(captured_categories), 4)
+        ]
+        summary_value = (
+            f"**{len(captured_categories)} categories acquired:**\n"
+            + "\n".join(f"• {chunk}" for chunk in chunks)
         )
-        # Group categories into rows of 3 for better formatting
-        for i in range(0, len(captured_categories), 3):
-            row = captured_categories[i : i + 3]
-            summary_lines.append(
-                ansi_format("   [+] ", color=AnsiColor.GREEN) +
-                ansi_format(" | ".join(row), color=AnsiColor.WHITE)
-            )
-
         embed["fields"].append(
             {
-                "name": ">> [[ DATA_EXFILTRATION_SUMMARY ]]",
-                "value": f"```ansi\n" + "\n".join(summary_lines) + "\n```",
+                "name": "📌 Captured Vectors",
+                "value": summary_value,
                 "inline": False,
             }
         )
 
-    # Add Educational Content Section
-    education_lines = []
-    education_lines.append(ansi_format(">> EDUCATIONAL_OBJECTIVES:", color=AnsiColor.CYAN, bold=True))
-    education_lines.append(ansi_format("   └─ Demonstrate ease of data harvesting", color=AnsiColor.WHITE))
-    education_lines.append(ansi_format("   └─ Expose browser information disclosure", color=AnsiColor.WHITE))
-    education_lines.append(ansi_format("   └─ Emphasize need for privacy tools", color=AnsiColor.WHITE))
-
-    education_value = f"```ansi\n" + "\n".join(education_lines) + "\n```\n\n"
-    education_value += "**DEFENSIVE_RESOURCES:**\n"
-    education_value += "• [Privacy Tools](https://www.privacytools.io/)\n"
-    education_value += "• [EFF Defense Guide](https://ssd.eff.org/)\n"
-    education_value += "• [Fingerprint Test](https://panopticlick.eff.org/)"
-
+    # ---- Training objectives ----
     embed["fields"].append(
         {
-            "name": "🎓 [[ TRAINING_OBJECTIVES ]]",
-            "value": education_value,
+            "name": "🎓 TRAINING_OBJECTIVES",
+            "value": (
+                "**EDUCATIONAL_OBJECTIVES**\n"
+                "• Demonstrate ease of data harvesting\n"
+                "• Expose browser information disclosure\n"
+                "• Emphasize need for privacy tools\n\n"
+                "**Defensive resources**\n"
+                "• [Privacy Tools](https://www.privacytools.io/)\n"
+                "• [EFF Defense Guide](https://ssd.eff.org/)\n"
+                "• [Cover Your Tracks](https://coveryourtracks.eff.org/)"
+            ),
             "inline": False,
         }
     )
@@ -769,280 +457,978 @@ def create_combined_surveillance_embed(data, recognition_info=None):
     return embed
 
 
-def create_detailed_category_embed(data, category):
-    """
-    Create detailed embed for specific data category
-    """
-    from datetime import datetime
+def _build_recognition_field(recognition_info):
+    """Build the device recognition field. Names preserved for downstream test assertions."""
+    if not recognition_info.get("is_returning"):
+        # New device
+        fingerprint = recognition_info.get("fingerprint") or "Unknown"
+        value = (
+            f"🆕 **New target acquired**\n"
+            f"**Alias:** `{recognition_info.get('current_name', 'Unknown')}`\n"
+            f"**Fingerprint:** `{fingerprint[:32]}…`\n"
+            f"_Device enrolled in surveillance database._"
+        )
+        return {
+            "name": "✨ NEW DEVICE FINGERPRINTED",
+            "value": value,
+            "inline": False,
+        }
 
-    category_configs = {
-        "camera": {
-            "title": "📸 CAMERA SURVEILLANCE DETAILS",
-            "color": 0xFF0000,
-            "icon": "📷",
-        },
-        "location": {
-            "title": "🌍 GPS LOCATION INTELLIGENCE",
-            "color": 0xE74C3C,
-            "icon": "📍",
-        },
-        "hardware": {
-            "title": "⚙️ HARDWARE PROFILE ANALYSIS",
-            "color": 0x3498DB,
-            "icon": "🔧",
-        },
-        "network": {
-            "title": "📡 NETWORK INTELLIGENCE REPORT",
-            "color": 0x9B59B6,
-            "icon": "🌐",
-        },
-        "fingerprint": {
-            "title": "🎨 DEVICE FINGERPRINT ANALYSIS",
-            "color": 0xE67E22,
-            "icon": "🔍",
-        },
+    visit_count = recognition_info.get("visit_count", 0)
+    first_seen = (recognition_info.get("first_seen") or "Unknown")[:16]
+    last_seen = (recognition_info.get("last_seen") or "Unknown")[:16]
+    fingerprint = (recognition_info.get("fingerprint") or "Unknown")[:32]
+    current = recognition_info.get("current_name", "Unknown")
+
+    if recognition_info.get("is_new_name"):
+        previous_names = recognition_info.get("previous_names", []) or []
+        prev_list = (
+            "\n".join(f"• `{name}`" for name in previous_names[-5:])
+            or "• _(none recorded)_"
+        )
+        value = (
+            f"🚨 **Identity SPOOFING attempt — same device, new alias.**\n"
+            f"**Current alias:** `{current}`\n"
+            f"**Previous identities ({len(previous_names)}):**\n{prev_list}\n\n"
+            f"**Visits:** `{visit_count}` · **First:** `{first_seen}` · **Last:** `{last_seen}`\n"
+            f"**Device hash:** `{fingerprint}…`\n"
+            f"_Persistent fingerprinting defeats username changes._"
+        )
+        return {
+            "name": "🚨 IDENTITY SPOOFING DETECTED",
+            "value": value,
+            "inline": False,
+        }
+
+    previous_ips = recognition_info.get("previous_ips", []) or []
+    ip_trail = ""
+    if len(previous_ips) > 1:
+        ip_trail = "\n**IP trail:** " + ", ".join(f"`{ip}`" for ip in previous_ips[-5:])
+
+    value = (
+        f"♻️ **Returning device · fingerprint matched.**\n"
+        f"**Target:** `{current}`\n"
+        f"**Visits:** `{visit_count}` · **First:** `{first_seen}` · **Last:** `{last_seen}`"
+        f"{ip_trail}\n"
+        f"**Device hash:** `{fingerprint}…`"
+    )
+    return {
+        "name": "♻️ RETURNING DEVICE TRACKED",
+        "value": value,
+        "inline": False,
     }
 
+
+def _build_critical_alerts(data):
+    """Build the critical exploits list. Keywords preserved: CAMERA, LOCATION, CLIPBOARD, WEBRTC, AUDIO FINGERPRINT."""
+    alerts = []
+
+    if data.get("camera", {}).get("captured"):
+        timestamp = data["camera"].get("timestamp", "Unknown")
+        alerts.append(
+            f"📸 **CAMERA compromised**\n"
+            f"└ Captured at `{timestamp}` (640×480 JPEG)"
+        )
+
+    if _is_valid_dict(data.get("geolocation")) and data["geolocation"].get("latitude") is not None:
+        lat = data["geolocation"].get("latitude")
+        lng = data["geolocation"].get("longitude")
+        accuracy = data["geolocation"].get("accuracy", "?")
+        alerts.append(
+            f"🌍 **Precise LOCATION acquired**\n"
+            f"└ `{lat:.6f}, {lng:.6f}` (±{accuracy}m)"
+        )
+
+    if _is_valid_dict(data.get("clipboard")):
+        clip_len = data["clipboard"].get("length", 0)
+        preview = (data["clipboard"].get("content", "") or "")[:30]
+        alerts.append(
+            f"📋 **CLIPBOARD intercepted**\n"
+            f"└ {clip_len} chars · preview: `{preview}…`"
+        )
+
+    media = data.get("mediaDevices")
+    if isinstance(media, list):
+        cam = sum(1 for d in media if isinstance(d, dict) and d.get("kind") == "videoinput")
+        mic = sum(1 for d in media if isinstance(d, dict) and d.get("kind") == "audioinput")
+        spk = sum(1 for d in media if isinstance(d, dict) and d.get("kind") == "audiooutput")
+        alerts.append(
+            f"🎥 **Media devices enumerated**\n"
+            f"└ Cameras: {cam} · Microphones: {mic} · Speakers: {spk}"
+        )
+
+    if data.get("webrtc") and data["webrtc"].get("leakDetected"):
+        local_ips = data["webrtc"].get("localIPs", []) or []
+        ip_str = ", ".join(f"`{ip}`" for ip in local_ips) if local_ips else "_unknown_"
+        alerts.append(
+            f"🔓 **WEBRTC IP leak detected**\n"
+            f"└ Local IPs: {ip_str} (VPN bypass possible)"
+        )
+
+    if _is_valid_dict(data.get("audioFingerprint")):
+        audio_hash = (data["audioFingerprint"].get("hash", "") or "unknown")[:16]
+        alerts.append(
+            f"🔊 **AUDIO FINGERPRINT captured**\n"
+            f"└ Hardware ID: `{audio_hash}…` (cross-browser tracking)"
+        )
+
+    perms = data.get("permissions") or {}
+    if _is_valid_dict(perms):
+        granted = [k for k, v in perms.items() if v == "granted"]
+        if granted:
+            alerts.append(
+                f"🔐 **Permissions granted without prompt**\n"
+                f"└ {', '.join(f'`{p}`' for p in granted[:8])}"
+            )
+
+    apps = data.get("installedApps") or {}
+    if _is_valid_dict(apps) and apps.get("count", 0) > 0:
+        sample = ", ".join(
+            f"`{a.get('id') or a.get('platform') or '?'}`"
+            for a in (apps.get("apps") or [])[:5]
+        )
+        alerts.append(
+            f"📦 **Installed apps disclosed**\n"
+            f"└ {apps.get('count', 0)} related apps: {sample or '_unknown_'}"
+        )
+
+    cve = data.get("_serverCveMatches") or {}
+    if isinstance(cve, dict) and cve.get("count", 0) > 0:
+        alerts.append(
+            f"🦠 **CVE EXPOSURE — outdated browser**\n"
+            f"└ `{cve['count']}` known CVE(s) · max CVSS `{cve.get('max_cvss', 0):.1f}`"
+        )
+
+    return alerts
+
+
+def _build_system_profile(data):
+    """Return (hardware_lines, network_lines) for the inline profile fields."""
+    hardware = []
+    network = []
+
+    if data.get("screen"):
+        screen = data["screen"]
+        total_pixels = (screen.get("width", 0) or 0) * (screen.get("height", 0) or 0)
+        hardware.append(
+            f"🖥️ **Display**\n"
+            f"`{screen.get('width', '?')}×{screen.get('height', '?')}` "
+            f"({total_pixels:,} px) · {screen.get('colorDepth', '?')}-bit"
+        )
+
+    if data.get("browser", {}).get("hardwareConcurrency"):
+        hardware.append(f"⚙️ **CPU**\n`{data['browser']['hardwareConcurrency']} cores`")
+
+    if data.get("deviceMemory"):
+        hardware.append(f"💾 **RAM**\n`{data['deviceMemory']} GB`")
+
+    if data.get("memory"):
+        memory = data["memory"]
+        heap_used = format_bytes(memory.get("usedJSHeapSize", 0))
+        heap_limit = format_bytes(memory.get("jsHeapSizeLimit", 0))
+        hardware.append(f"🧠 **JS Heap**\n`{heap_used}` / `{heap_limit}`")
+
+    if _is_valid_dict(data.get("battery")):
+        battery = data["battery"]
+        level = int((battery.get("level", 0) or 0) * 100)
+        status = "🔌 charging" if battery.get("charging") else "🔋 discharging"
+        hardware.append(f"🔋 **Battery**\n`{level}%` · {status}")
+
+    if data.get("timezone"):
+        tz = data["timezone"]
+        offset_hours = (tz.get("offset", 0) or 0) / -60
+        network.append(
+            f"🌐 **Timezone**\n`{tz.get('name', 'Unknown')}` (UTC{offset_hours:+.1f})"
+        )
+
+    if _is_valid_dict(data.get("network")):
+        net = data["network"]
+        speed = f"{net.get('downlink', '?')} Mbps"
+        rtt = f"{net.get('rtt', '?')} ms"
+        network.append(
+            f"📡 **Connection**\n`{net.get('effectiveType', '?')}` · {speed} · {rtt}"
+        )
+
+    if data.get("viewport"):
+        vp = data["viewport"]
+        if isinstance(vp, dict) and (vp.get("width") or vp.get("height")):
+            network.append(
+                f"📐 **Viewport**\n"
+                f"`{vp.get('width', '?')}×{vp.get('height', '?')}`"
+            )
+
+    return hardware, network
+
+
+def _build_advanced_fingerprinting(data):
+    """Build advanced fingerprinting bullets. Preserves keywords 'Font' and 'Behavioral'."""
+    items = []
+
+    fonts = data.get("fonts")
+    if fonts and not (isinstance(fonts, dict) and fonts.get("error")):
+        font_count = fonts.get("count", 0) if isinstance(fonts, dict) else 0
+        installed = (fonts.get("installed", []) if isinstance(fonts, dict) else [])[:5]
+        sample = ", ".join(installed) if installed else "_no sample_"
+        items.append(
+            f"🔤 **Font fingerprinting**\n"
+            f"└ `{font_count}` unique fonts · sample: {sample}"
+        )
+
+    if data.get("cpuBenchmark"):
+        cpu = data["cpuBenchmark"]
+        score = cpu.get("score", 0)
+        duration = cpu.get("duration", 0) or 0
+        items.append(
+            f"⚡ **CPU benchmark**\n"
+            f"└ Score `{score}` · {duration:.2f} ms"
+        )
+
+    if data.get("behavioral"):
+        beh = data["behavioral"]
+        moves = len(beh.get("mouseMovements", []) or [])
+        visible = beh.get("pageVisible", False)
+        items.append(
+            f"🖱️ **Behavioral tracking**\n"
+            f"└ Mouse events `{moves}` · page {'visible' if visible else 'hidden'}"
+        )
+
+    sensors = data.get("sensors")
+    if sensors:
+        active = [
+            k for k, v in sensors.items()
+            if not (isinstance(v, dict) and v.get("error"))
+        ]
+        if active:
+            items.append(
+                f"📱 **Hardware sensors**\n"
+                f"└ Active: {', '.join(f'`{s}`' for s in active)}"
+            )
+
+    return items
+
+
+def _build_risk_assessment(data):
+    """Compute and render the risk assessment field."""
+    score = 0
+    risk_factors = []
+
+    if data.get("camera", {}).get("captured"):
+        score += 35
+        risk_factors.append("Camera access granted")
+    if _is_valid_dict(data.get("geolocation")) and data["geolocation"].get("latitude") is not None:
+        score += 30
+        risk_factors.append("GPS location exposed")
+    if _is_valid_dict(data.get("clipboard")):
+        score += 25
+        risk_factors.append("Clipboard data accessed")
+
+    media = data.get("mediaDevices")
+    if isinstance(media, list) or (isinstance(media, dict) and not media.get("error") and media):
+        score += 20
+        risk_factors.append("Media devices enumerated")
+
+    if data.get("canvas") or _is_valid_dict(data.get("webgl")):
+        score += 15
+        risk_factors.append("Device fingerprinting active")
+
+    if _is_valid_dict(data.get("storage")):
+        score += 10
+        risk_factors.append("Storage information gathered")
+
+    if _is_valid_dict(data.get("audioFingerprint")):
+        score += 15
+        risk_factors.append("Audio fingerprint captured")
+
+    if data.get("webrtc") and data["webrtc"].get("leakDetected"):
+        score += 25
+        risk_factors.append("WebRTC IP leak detected")
+
+    if data.get("fonts") and data.get("fonts", {}).get("count", 0) > 10:
+        score += 10
+        risk_factors.append("Extensive font fingerprinting")
+
+    if data.get("behavioral") and data.get("behavioral", {}).get("mouseMovements"):
+        score += 15
+        risk_factors.append("Behavioral tracking active")
+
+    if data.get("sensors") and len(data.get("sensors", {})) > 0:
+        score += 20
+        risk_factors.append("Hardware sensors accessed")
+
+    perms = data.get("permissions") or {}
+    if _is_valid_dict(perms):
+        granted = sum(1 for v in perms.values() if v == "granted")
+        if granted:
+            score += 10 + min(granted, 5) * 3
+            risk_factors.append(f"{granted} permission(s) pre-granted")
+
+    if _is_valid_dict(data.get("uaClientHints")):
+        score += 5
+        risk_factors.append("UA-CH high-entropy disclosure")
+
+    if _is_valid_dict(data.get("webgpu")):
+        score += 5
+        risk_factors.append("WebGPU adapter exposed")
+
+    if _is_valid_dict(data.get("speechVoices")) and data["speechVoices"].get("count", 0):
+        score += 5
+        risk_factors.append("Installed voices leaked")
+
+    if _is_valid_dict(data.get("keyboardLayout")):
+        score += 5
+        risk_factors.append("Keyboard layout disclosed")
+
+    if _is_valid_dict(data.get("installedApps")) and data["installedApps"].get("count", 0):
+        score += 15
+        risk_factors.append("Installed apps disclosed")
+
+    sd = data.get("screenDetails") or {}
+    if isinstance(sd, dict) and sd.get("isExtended"):
+        score += 5
+        risk_factors.append("Multi-monitor setup disclosed")
+
+    hard = data.get("hardeningSignals") or {}
+    if isinstance(hard, dict):
+        if hard.get("sharedArrayBuffer") is False or hard.get("crossOriginIsolated") is False:
+            score += 5
+            risk_factors.append("Spectre mitigations not active")
+
+    cve = data.get("_serverCveMatches") or {}
+    if isinstance(cve, dict) and cve.get("count", 0):
+        score += min(int(cve.get("max_cvss", 0) * 3), 30)
+        risk_factors.append(
+            f"Outdated browser ({cve['count']} CVE, CVSS {cve.get('max_cvss', 0):.1f})"
+        )
+
+    score = min(score, 100)
+    risk_label_ansi, _ = get_threat_indicator(score)
+    risk_label_plain = strip_ansi(risk_label_ansi)
+    emoji = _threat_emoji(risk_label_plain)
+
+    bar_block = f"```ansi\n{create_progress_bar(score)}\n```"
+    primary = (
+        "\n".join(f"• {f}" for f in risk_factors[:3])
+        if risk_factors
+        else "• _No notable risk factors._"
+    )
+
+    value = (
+        f"**Score:** `{score}/100` · {emoji} `{risk_label_plain}`\n"
+        f"{bar_block}\n"
+        f"**Risk factors:** `{len(risk_factors)} identified`\n"
+        f"**Primary concerns:**\n{primary}"
+    )
+
+    return {
+        "name": "🛡️ RISK_ASSESSMENT",
+        "value": value,
+        "inline": False,
+    }
+
+
+def _build_ua_client_hints_field(data):
+    ua = data.get("uaClientHints")
+    if not _is_valid_dict(ua):
+        return None
+    brands = ua.get("brands") or []
+    brand_str = ", ".join(
+        f"{b.get('brand')} {b.get('version')}".strip()
+        for b in brands
+        if isinstance(b, dict)
+    ) or "_unknown_"
+
+    full_list = ua.get("fullVersionList") or []
+    full_str = ", ".join(
+        f"{b.get('brand')} `{b.get('version')}`"
+        for b in full_list
+        if isinstance(b, dict)
+    ) or "_n/a_"
+
+    lines = [
+        f"**Brands:** {brand_str}",
+        f"**Full versions:** {full_str}",
+        (
+            f"**Platform:** `{ua.get('platform', '?')} {ua.get('platformVersion', '')}`".strip()
+        ),
+    ]
+    if ua.get("architecture") or ua.get("bitness"):
+        lines.append(
+            f"**Arch:** `{ua.get('architecture', '?')}` · "
+            f"**Bitness:** `{ua.get('bitness', '?')}`"
+        )
+    if ua.get("model"):
+        lines.append(f"**Model:** `{ua.get('model')}`")
+    lines.append(
+        f"**Mobile:** {ua.get('mobile', False)} · "
+        f"**Form factor:** `{ua.get('formFactor') or '—'}`"
+    )
+    return {
+        "name": "🪪 UA-CH High Entropy",
+        "value": "\n".join(lines),
+        "inline": False,
+    }
+
+
+def _build_permissions_field(data):
+    perms = data.get("permissions")
+    if not _is_valid_dict(perms):
+        return None
+
+    icons = {"granted": "✅", "prompt": "❓", "denied": "⛔"}
+    granted = sorted([k for k, v in perms.items() if v == "granted"])
+    prompt = sorted([k for k, v in perms.items() if v == "prompt"])
+    denied = sorted([k for k, v in perms.items() if v == "denied"])
+
+    def fmt(group, label, key):
+        if not group:
+            return f"{icons[key]} **{label}:** _none_"
+        return f"{icons[key]} **{label}:** " + ", ".join(f"`{p}`" for p in group)
+
+    lines = [
+        fmt(granted, "Granted", "granted"),
+        fmt(prompt, "Promptable", "prompt"),
+        fmt(denied, "Denied", "denied"),
+    ]
+    return {
+        "name": "🔐 Permissions State",
+        "value": "\n".join(lines),
+        "inline": False,
+    }
+
+
+def _build_acceleration_field(data):
+    """WebGPU adapter + DRM/codecs combined into one block."""
+    parts = []
+    gpu = data.get("webgpu")
+    if _is_valid_dict(gpu):
+        parts.append(
+            "🎮 **WebGPU adapter**\n"
+            f"└ Vendor: `{gpu.get('vendor', '?')}` · "
+            f"Arch: `{gpu.get('architecture', '?')}` · "
+            f"Device: `{gpu.get('device', '?')}`"
+        )
+
+    drm = data.get("drm")
+    if _is_valid_dict(drm):
+        ks = drm.get("keySystems") or {}
+        active = [name for name, ok in ks.items() if ok]
+        codecs = drm.get("codecs") or {}
+        active_codecs = [c for c, ok in codecs.items() if ok]
+        parts.append(
+            "📼 **DRM / Codecs**\n"
+            f"└ Key systems: {', '.join(f'`{a}`' for a in active) or '_none_'}\n"
+            f"└ Codecs supported: {len(active_codecs)}/{len(codecs) or '?'}"
+        )
+
+    if not parts:
+        return None
+    return {
+        "name": "🚀 Hardware Acceleration",
+        "value": "\n\n".join(parts),
+        "inline": False,
+    }
+
+
+def _build_capabilities_field(data):
+    """matchMedia probes + screen details + keyboard layout."""
+    parts = []
+
+    mq = data.get("mediaQueries")
+    if _is_valid_dict(mq):
+        active = [k for k, v in mq.items() if v is True]
+        if active:
+            parts.append(
+                "🖼️ **Display capabilities**\n└ "
+                + ", ".join(f"`{k}`" for k in active[:10])
+            )
+
+    sd = data.get("screenDetails") or {}
+    if isinstance(sd, dict) and not sd.get("error"):
+        screens = sd.get("screens") or []
+        if screens:
+            primary = next((s for s in screens if s.get("isPrimary")), screens[0])
+            parts.append(
+                "🖥️ **Multi-monitor**\n"
+                f"└ {len(screens)} screen(s) · "
+                f"primary `{primary.get('width', '?')}×{primary.get('height', '?')}` "
+                f"@ DPR `{primary.get('devicePixelRatio', '?')}`"
+            )
+        elif sd.get("isExtended") is not None:
+            parts.append(
+                f"🖥️ **Multi-monitor**\n└ Extended desktop: `{bool(sd.get('isExtended'))}`"
+            )
+
+    kb = data.get("keyboardLayout")
+    if _is_valid_dict(kb):
+        sample = kb.get("sample") or {}
+        sample_str = ", ".join(f"`{k}→{v}`" for k, v in list(sample.items())[:4])
+        parts.append(
+            f"⌨️ **Keyboard layout**\n└ {kb.get('size', '?')} keys mapped · {sample_str or '_no sample_'}"
+        )
+
+    if not parts:
+        return None
+    return {
+        "name": "🧭 Display & Input Capabilities",
+        "value": "\n\n".join(parts),
+        "inline": False,
+    }
+
+
+def _build_os_leaks_field(data):
+    """Speech voices + installed apps — both leak OS/locale/identity."""
+    parts = []
+
+    voices = data.get("speechVoices")
+    if _is_valid_dict(voices) and voices.get("count", 0):
+        sample = voices.get("sample") or []
+        sample_str = ", ".join(
+            f"`{v.get('name', '?').split(' ')[0]} ({v.get('lang', '?')})`"
+            for v in sample[:5]
+        )
+        parts.append(
+            f"🗣️ **Speech voices**\n└ {voices.get('count')} installed · {sample_str}"
+        )
+
+    apps = data.get("installedApps")
+    if _is_valid_dict(apps) and apps.get("count", 0):
+        items = ", ".join(
+            f"`{a.get('id') or a.get('platform') or '?'}`"
+            for a in (apps.get("apps") or [])[:5]
+        )
+        parts.append(
+            f"📦 **Installed apps**\n└ {apps.get('count')} found · {items}"
+        )
+
+    if not parts:
+        return None
+    return {
+        "name": "🕵️ OS-Level Leaks",
+        "value": "\n\n".join(parts),
+        "inline": False,
+    }
+
+
+def _build_hardening_field(data):
+    """Spectre/site isolation health and security context."""
+    h = data.get("hardeningSignals")
+    if not isinstance(h, dict) or not h or h.get("error"):
+        return None
+
+    def mark(value, on_label="enabled", off_label="missing"):
+        if value is True:
+            return f"✅ {on_label}"
+        if value is False:
+            return f"⚠️ {off_label}"
+        return "—"
+
+    lines = [
+        f"**SharedArrayBuffer:** {mark(h.get('sharedArrayBuffer'))}",
+        f"**Cross-origin isolated:** {mark(h.get('crossOriginIsolated'))}",
+        f"**Secure context (HTTPS):** {mark(h.get('isSecureContext'))}",
+        f"**Trusted Types:** {mark(h.get('trustedTypes'), 'available', 'not available')}",
+        f"**Cookie Store API:** {mark(h.get('cookieStore'), 'available', 'not available')}",
+        f"**Storage Access API:** {mark(h.get('storageAccessApi'), 'available', 'not available')}",
+    ]
+    return {
+        "name": "🛡️ Hardening Posture",
+        "value": "\n".join(lines),
+        "inline": False,
+    }
+
+
+def _build_transport_field(data):
+    """Server-side transport profile (Cloudflare/Sec-Fetch hints)."""
+    t = data.get("_serverTransport")
+    if not isinstance(t, dict) or not t:
+        return None
+
+    rows = []
+    if t.get("isHttps") is not None:
+        rows.append(f"**HTTPS:** {'✅' if t['isHttps'] else '❌'} (signals: `{t.get('secureContextHints', 0)}`)")
+    if t.get("scheme") or t.get("forwardedProto") or t.get("cfScheme"):
+        rows.append(
+            f"**Scheme:** `{t.get('scheme', '?')}` · "
+            f"X-Forwarded-Proto: `{t.get('forwardedProto', '—')}` · "
+            f"CF-Visitor: `{t.get('cfScheme', '—')}`"
+        )
+    if t.get("cfRay") or t.get("cfCountry"):
+        rows.append(
+            f"**Cloudflare:** Ray `{t.get('cfRay', '—')}` · Country `{t.get('cfCountry', '—')}`"
+        )
+    sf = [k for k in ("secFetchSite", "secFetchMode", "secFetchDest") if t.get(k)]
+    if sf:
+        rows.append(
+            "**Sec-Fetch:** "
+            + " · ".join(f"`{k.replace('secFetch', '').lower()}={t[k]}`" for k in sf)
+        )
+    fvl = t.get("secChUaFullVersionList")
+    if fvl:
+        rows.append(f"**UA-CH full version (header):** `{fvl[:120]}`")
+    if t.get("secChUaPlatform") or t.get("secChUaPlatformVersion"):
+        rows.append(
+            f"**Platform header:** `{t.get('secChUaPlatform', '?')} "
+            f"{t.get('secChUaPlatformVersion', '')}`".strip()
+        )
+    if t.get("acceptLanguage"):
+        rows.append(f"**Accept-Language:** `{t['acceptLanguage'][:60]}`")
+    if not rows:
+        return None
+    return {
+        "name": "🛰️ Transport Profile (server-side)",
+        "value": "\n".join(rows),
+        "inline": False,
+    }
+
+
+def _build_cve_field(data):
+    """Passive browser CVE match summary."""
+    cve = data.get("_serverCveMatches")
+    if not isinstance(cve, dict) or cve.get("count", 0) == 0:
+        return None
+
+    sev_emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢", "none": "⚪"}
+    items = cve.get("items") or []
+    sample_lines = []
+    for it in items[:5]:
+        cvss = it.get("cvss", 0.0)
+        sev = it.get("severity", "?")
+        summary = (it.get("summary") or "")[:90]
+        sample_lines.append(
+            f"{sev_emoji.get(sev, '⚪')} `{it.get('id')}` "
+            f"CVSS `{cvss:.1f}` · fix `{it.get('fixed_in')}` — {summary}"
+        )
+
+    overflow = ""
+    if len(items) > 5:
+        overflow = f"\n_…and {len(items) - 5} more._"
+
+    header = (
+        f"**{cve['count']} known CVE(s)** affecting this browser version · "
+        f"max CVSS `{cve.get('max_cvss', 0):.1f}` "
+        f"({sev_emoji.get(cve.get('highest_severity', 'none'), '⚪')} `{cve.get('highest_severity')}`)\n\n"
+    )
+
+    value = header + "\n".join(sample_lines) + overflow
+    # Discord field-value limit is 1024 chars
+    if len(value) > 1020:
+        value = value[:1017] + "..."
+    return {
+        "name": "🦠 Browser CVE Exposure",
+        "value": value,
+        "inline": False,
+    }
+
+
+def create_detailed_category_embed(data, category, dc_handle=None):
+    """Create a detailed embed for a specific data category."""
+    from datetime import datetime
+
+    target = _safe_handle(dc_handle)
+
+    category_configs = {
+        "camera": {"title": "📸 CAMERA SURVEILLANCE DETAILS", "color": 0xFF0000},
+        "location": {"title": "🌍 GPS LOCATION INTELLIGENCE", "color": 0xE74C3C},
+        "hardware": {"title": "⚙️ HARDWARE PROFILE ANALYSIS", "color": 0x3498DB},
+        "network": {"title": "📡 NETWORK INTELLIGENCE REPORT", "color": 0x9B59B6},
+        "fingerprint": {"title": "🎨 DEVICE FINGERPRINT ANALYSIS", "color": 0xE67E22},
+    }
     config = category_configs.get(
-        category,
-        {"title": "📊 DETAILED DATA ANALYSIS", "color": 0x95A5A6, "icon": "📋"},
+        category, {"title": "📊 DETAILED DATA ANALYSIS", "color": 0x95A5A6}
     )
 
     embed = {
-        "title": config["title"],
-        "description": f"**Comprehensive analysis of {category} data**",
+        "title": f"{config['title']} — Ticket: {target}",
+        "description": f"**Ticket:** `{target}`\nDetailed analysis of `{category}` data.",
         "color": config["color"],
         "timestamp": datetime.now().isoformat(),
         "fields": [],
         "footer": {
-            "text": f"DC-Shield {category.title()} Intelligence • Educational Demonstration",
+            "text": f"Ticket {target} • DC-Shield {category.title()} Intelligence • Educational Demonstration",
             "icon_url": "https://cdn.discordapp.com/attachments/123456789/shield-icon.png",
         },
     }
 
-    # Category-specific detailed fields
-    if category == "camera" and data.get("camera", {}).get("captured"):
-        camera_data = data["camera"]
-        embed["fields"].extend(
-            [
-                {
-                    "name": "📷 Capture Information",
-                    "value": f"**Status:** ✅ Successfully captured\n**Timestamp:** {camera_data.get('timestamp')}\n**Resolution:** 640×480 pixels\n**Format:** JPEG (Base64 encoded)",
-                    "inline": False,
-                },
-                {
-                    "name": "🔍 Technical Details",
-                    "value": f"**Encoding Quality:** 80%\n**Estimated Size:** ~50-100KB\n**Color Space:** RGB\n**Compression:** JPEG standard",
-                    "inline": True,
-                },
-                {
-                    "name": "⚠️ Privacy Impact",
-                    "value": f"**Sensitivity Level:** 🔴 Critical\n**Data Type:** Visual biometric\n**Reversibility:** Permanent capture\n**Mitigation:** Camera permissions",
-                    "inline": True,
-                },
-            ]
-        )
-
-    elif category == "location":
-        if data.get("geolocation", {}).get("latitude"):
-            geo_data = data["geolocation"]
-            lat, lng = geo_data.get("latitude"), geo_data.get("longitude")
-
+    if category == "camera":
+        cam = data.get("camera", {}) or {}
+        if cam.get("captured"):
             embed["fields"].extend(
                 [
                     {
-                        "name": "📍 Precise Coordinates",
-                        "value": f"**Latitude:** {lat:.8f}°\n**Longitude:** {lng:.8f}°\n**Accuracy:** ±{geo_data.get('accuracy', 'Unknown')} meters",
+                        "name": "📷 Capture",
+                        "value": (
+                            f"**Status:** ✅ captured\n"
+                            f"**Timestamp:** `{cam.get('timestamp', '?')}`\n"
+                            f"**Resolution:** 640×480 (JPEG, ~80% quality)"
+                        ),
+                        "inline": False,
+                    },
+                    {
+                        "name": "⚠️ Privacy Impact",
+                        "value": (
+                            "**Sensitivity:** 🔴 Critical\n"
+                            "**Type:** Visual biometric\n"
+                            "**Mitigation:** Revoke camera permission"
+                        ),
+                        "inline": True,
+                    },
+                ]
+            )
+        else:
+            embed["fields"].append(
+                {
+                    "name": "📷 Capture",
+                    "value": "**Status:** ❌ no capture (permission denied or blocked)",
+                    "inline": False,
+                }
+            )
+
+    elif category == "location":
+        geo = data.get("geolocation") or {}
+        if geo.get("latitude") is not None:
+            lat = geo.get("latitude")
+            lng = geo.get("longitude")
+            embed["fields"].extend(
+                [
+                    {
+                        "name": "📍 Coordinates",
+                        "value": (
+                            f"**Latitude:** `{lat:.8f}`\n"
+                            f"**Longitude:** `{lng:.8f}`\n"
+                            f"**Accuracy:** ±{geo.get('accuracy', '?')} m"
+                        ),
                         "inline": True,
                     },
                     {
-                        "name": "🗺️ Additional Data",
-                        "value": f"**Altitude:** {geo_data.get('altitude') or 'Unknown'} m\n**Heading:** {geo_data.get('heading') or 'Unknown'}°\n**Speed:** {geo_data.get('speed') or 'Unknown'} m/s",
+                        "name": "🗺️ Motion / Altitude",
+                        "value": (
+                            f"**Altitude:** {geo.get('altitude') or '—'} m\n"
+                            f"**Heading:** {geo.get('heading') or '—'}°\n"
+                            f"**Speed:** {geo.get('speed') or '—'} m/s"
+                        ),
                         "inline": True,
                     },
                     {
-                        "name": "🔗 External Resources",
-                        "value": f"[📍 Google Maps](https://www.google.com/maps?q={lat},{lng})\n[🌍 OpenStreetMap](https://www.openstreetmap.org/?mlat={lat}&mlon={lng})\n[📊 GPS Visualizer](http://www.gpsvisualizer.com/)",
+                        "name": "🔗 External Maps",
+                        "value": (
+                            f"• [Google Maps](https://www.google.com/maps?q={lat},{lng})\n"
+                            f"• [OpenStreetMap](https://www.openstreetmap.org/?mlat={lat}&mlon={lng})"
+                        ),
                         "inline": False,
                     },
                 ]
             )
         else:
-            embed["fields"].append({
-                "name": "📍 Location Data",
-                "value": "**Status:** ❌ No geolocation data captured\n**Reason:** User denied permission or browser blocking\n**Privacy Impact:** 🟢 Location privacy protected",
-                "inline": False
-            })
+            embed["fields"].append(
+                {
+                    "name": "📍 Location",
+                    "value": "**Status:** ❌ no geolocation (permission denied or blocked)",
+                    "inline": False,
+                }
+            )
 
     elif category == "hardware":
-        # Hardware profile details
-        hardware_details = []
-
+        items = []
         if data.get("screen"):
             screen = data["screen"]
-            hardware_details.append({
-                "name": "🖥️ Display Information",
-                "value": f"**Resolution:** {screen.get('width')}×{screen.get('height')} pixels\n**Color Depth:** {screen.get('colorDepth', 'Unknown')} bits\n**Pixel Ratio:** {screen.get('pixelRatio', 'Unknown')}",
-                "inline": True
-            })
-
+            items.append(
+                {
+                    "name": "🖥️ Display",
+                    "value": (
+                        f"**Resolution:** `{screen.get('width', '?')}×{screen.get('height', '?')}`\n"
+                        f"**Color depth:** {screen.get('colorDepth', '?')}-bit\n"
+                        f"**Pixel ratio:** {screen.get('pixelRatio', '?')}"
+                    ),
+                    "inline": True,
+                }
+            )
         if data.get("browser", {}).get("hardwareConcurrency"):
-            cores = data["browser"]["hardwareConcurrency"]
-            hardware_details.append({
-                "name": "⚙️ CPU Information",
-                "value": f"**Logical Cores:** {cores}\n**Architecture:** Unknown (browser limitation)\n**Platform:** {data.get('browser', {}).get('platform', 'Unknown')}",
-                "inline": True
-            })
-
+            items.append(
+                {
+                    "name": "⚙️ CPU",
+                    "value": (
+                        f"**Logical cores:** {data['browser']['hardwareConcurrency']}\n"
+                        f"**Platform:** `{data.get('browser', {}).get('platform', '?')}`"
+                    ),
+                    "inline": True,
+                }
+            )
         if data.get("deviceMemory"):
-            ram_gb = data["deviceMemory"]
-            hardware_details.append({
-                "name": "💾 Memory Information",
-                "value": f"**Device RAM:** {ram_gb} GB\n**Type:** Unknown (browser limitation)\n**Available for JS:** Limited",
-                "inline": True
-            })
-
+            items.append(
+                {
+                    "name": "💾 Memory",
+                    "value": f"**Device RAM:** {data['deviceMemory']} GB",
+                    "inline": True,
+                }
+            )
         if data.get("memory"):
-            memory = data["memory"]
-            heap_used = format_bytes(memory.get("usedJSHeapSize", 0))
-            heap_limit = format_bytes(memory.get("jsHeapSizeLimit", 0))
-            heap_total = format_bytes(memory.get("totalJSHeapSize", 0))
-            hardware_details.append({
-                "name": "🧠 JavaScript Heap",
-                "value": f"**Used:** {heap_used}\n**Total:** {heap_total}\n**Limit:** {heap_limit}",
-                "inline": True
-            })
-
-        if data.get("battery"):
-            battery = data["battery"]
-            if not battery.get("error"):
-                level = int(battery.get("level", 0) * 100)
-                status = "Charging" if battery.get("charging") else "Discharging"
-                charging_time = battery.get("chargingTime", "Unknown")
-                discharge_time = battery.get("dischargingTime", "Unknown")
-                hardware_details.append({
-                    "name": "🔋 Battery Status",
-                    "value": f"**Level:** {level}%\n**Status:** {status}\n**Time to full:** {charging_time}s\n**Time remaining:** {discharge_time}s",
-                    "inline": True
-                })
-
-        if hardware_details:
-            embed["fields"].extend(hardware_details)
+            mem = data["memory"]
+            items.append(
+                {
+                    "name": "🧠 JS Heap",
+                    "value": (
+                        f"**Used:** {format_bytes(mem.get('usedJSHeapSize', 0))}\n"
+                        f"**Total:** {format_bytes(mem.get('totalJSHeapSize', 0))}\n"
+                        f"**Limit:** {format_bytes(mem.get('jsHeapSizeLimit', 0))}"
+                    ),
+                    "inline": True,
+                }
+            )
+        if _is_valid_dict(data.get("battery")):
+            bat = data["battery"]
+            level = int((bat.get("level", 0) or 0) * 100)
+            status = "charging" if bat.get("charging") else "discharging"
+            items.append(
+                {
+                    "name": "🔋 Battery",
+                    "value": (
+                        f"**Level:** {level}%\n"
+                        f"**Status:** {status}"
+                    ),
+                    "inline": True,
+                }
+            )
+        if items:
+            embed["fields"].extend(items)
         else:
-            embed["fields"].append({
-                "name": "⚙️ Hardware Data",
-                "value": "**Status:** ❌ No hardware data captured\n**Reason:** Browser blocking or permissions denied",
-                "inline": False
-            })
+            embed["fields"].append(
+                {"name": "⚙️ Hardware", "value": "**Status:** ❌ no hardware data", "inline": False}
+            )
 
     elif category == "network":
-        # Network details
-        network_details = []
-
-        if data.get("network"):
-            network = data["network"]
-            if not network.get("error"):
-                network_details.append({
-                    "name": "📡 Connection Information",
-                    "value": f"**Type:** {network.get('effectiveType', 'Unknown')}\n**Downlink:** {network.get('downlink', 'Unknown')} Mbps\n**RTT:** {network.get('rtt', 'Unknown')}ms\n**Save Data:** {network.get('saveData', False)}",
-                    "inline": True
-                })
-
-        if data.get("webrtc"):
-            webrtc = data["webrtc"]
-            if webrtc.get("leakDetected"):
-                local_ips = webrtc.get("localIPs", [])
-                network_details.append({
-                    "name": "🔓 WebRTC Leak Detection",
-                    "value": f"**Status:** ⚠️ IP LEAK DETECTED\n**Local IPs:** {', '.join(local_ips) if local_ips else 'None'}\n**Privacy Risk:** 🔴 High - VPN bypass possible",
-                    "inline": True
-                })
-            else:
-                network_details.append({
-                    "name": "🔒 WebRTC Status",
-                    "value": f"**Status:** ✅ No leaks detected\n**Privacy:** 🟢 Protected",
-                    "inline": True
-                })
-
+        items = []
+        net = data.get("network") or {}
+        if not net.get("error") and net:
+            items.append(
+                {
+                    "name": "📡 Connection",
+                    "value": (
+                        f"**Type:** {net.get('effectiveType', '?')}\n"
+                        f"**Downlink:** {net.get('downlink', '?')} Mbps\n"
+                        f"**RTT:** {net.get('rtt', '?')} ms\n"
+                        f"**Save data:** {net.get('saveData', False)}"
+                    ),
+                    "inline": True,
+                }
+            )
+        webrtc = data.get("webrtc") or {}
+        if webrtc.get("leakDetected"):
+            local_ips = webrtc.get("localIPs", []) or []
+            items.append(
+                {
+                    "name": "🔓 WebRTC Leak",
+                    "value": (
+                        f"**Status:** ⚠️ leak detected\n"
+                        f"**Local IPs:** {', '.join(f'`{ip}`' for ip in local_ips) or '—'}\n"
+                        f"**Risk:** 🔴 high (VPN bypass possible)"
+                    ),
+                    "inline": True,
+                }
+            )
+        elif webrtc:
+            items.append(
+                {
+                    "name": "🔒 WebRTC",
+                    "value": "**Status:** ✅ no leaks detected",
+                    "inline": True,
+                }
+            )
         if data.get("timezone"):
             tz = data["timezone"]
-            offset_hours = tz.get("offset", 0) / -60
-            network_details.append({
-                "name": "🌐 Timezone & Location",
-                "value": f"**Timezone:** {tz.get('name', 'Unknown')}\n**UTC Offset:** UTC{offset_hours:+.1f}\n**Language:** {data.get('browser', {}).get('language', 'Unknown')}",
-                "inline": True
-            })
-
-        if network_details:
-            embed["fields"].extend(network_details)
+            offset_hours = (tz.get("offset", 0) or 0) / -60
+            items.append(
+                {
+                    "name": "🌐 Timezone",
+                    "value": (
+                        f"**Zone:** `{tz.get('name', '?')}`\n"
+                        f"**Offset:** UTC{offset_hours:+.1f}\n"
+                        f"**Language:** `{data.get('browser', {}).get('language', '?')}`"
+                    ),
+                    "inline": True,
+                }
+            )
+        if items:
+            embed["fields"].extend(items)
         else:
-            embed["fields"].append({
-                "name": "📡 Network Data",
-                "value": "**Status:** ❌ No network data captured",
-                "inline": False
-            })
+            embed["fields"].append(
+                {"name": "📡 Network", "value": "**Status:** ❌ no network data", "inline": False}
+            )
 
     elif category == "fingerprint":
-        # Fingerprinting details
-        fingerprint_details = []
-
+        items = []
         if data.get("canvas"):
-            canvas_hash = data["canvas"][:32] if isinstance(data["canvas"], str) else "Unknown"
-            fingerprint_details.append({
-                "name": "🎨 Canvas Fingerprint",
-                "value": f"**Hash:** `{canvas_hash}...`\n**Uniqueness:** High\n**Tracking Resistance:** Use Canvas Blocker extension",
-                "inline": True
-            })
-
-        if data.get("webgl"):
-            webgl = data["webgl"]
-            if not webgl.get("error"):
-                vendor = webgl.get("vendor", "Unknown")
-                renderer = webgl.get("renderer", "Unknown")
-                fingerprint_details.append({
-                    "name": "🎮 WebGL Fingerprint",
-                    "value": f"**Vendor:** {vendor[:30]}...\n**Renderer:** {renderer[:30]}...\n**Uniqueness:** Very High",
-                    "inline": True
-                })
-
-        if data.get("audioFingerprint"):
-            audio = data["audioFingerprint"]
-            if not audio.get("error"):
-                audio_hash = audio.get("hash", "Unknown")[:32]
-                fingerprint_details.append({
-                    "name": "🔊 Audio Fingerprint",
-                    "value": f"**Hash:** `{audio_hash}...`\n**Uniqueness:** Extremely High\n**Note:** Tracks across browsers",
-                    "inline": True
-                })
-
-        if data.get("fonts"):
-            fonts = data["fonts"]
-            if not fonts.get("error"):
-                font_count = fonts.get("count", 0)
-                installed = fonts.get("installed", [])[:5]
-                fingerprint_details.append({
-                    "name": "🔤 Font Detection",
-                    "value": f"**Total Fonts:** {font_count}\n**Sample:** {', '.join(installed)}\n**Uniqueness:** High",
-                    "inline": False
-                })
-
+            canvas_hash = (
+                data["canvas"][:32] if isinstance(data["canvas"], str) else "?"
+            )
+            items.append(
+                {
+                    "name": "🎨 Canvas",
+                    "value": (
+                        f"**Hash:** `{canvas_hash}…`\n"
+                        f"**Mitigation:** Canvas Blocker extension"
+                    ),
+                    "inline": True,
+                }
+            )
+        webgl = data.get("webgl") or {}
+        if not webgl.get("error") and webgl:
+            vendor = (webgl.get("vendor") or "?")[:30]
+            renderer = (webgl.get("renderer") or "?")[:30]
+            items.append(
+                {
+                    "name": "🎮 WebGL",
+                    "value": (
+                        f"**Vendor:** `{vendor}`\n"
+                        f"**Renderer:** `{renderer}`"
+                    ),
+                    "inline": True,
+                }
+            )
+        audio = data.get("audioFingerprint") or {}
+        if not audio.get("error") and audio:
+            audio_hash = (audio.get("hash") or "?")[:32]
+            items.append(
+                {
+                    "name": "🔊 Audio",
+                    "value": f"**Hash:** `{audio_hash}…` _(cross-browser)_",
+                    "inline": True,
+                }
+            )
+        fonts = data.get("fonts") or {}
+        if not fonts.get("error") and fonts:
+            font_count = fonts.get("count", 0)
+            installed = (fonts.get("installed", []) or [])[:5]
+            items.append(
+                {
+                    "name": "🔤 Fonts",
+                    "value": (
+                        f"**Total:** {font_count}\n"
+                        f"**Sample:** {', '.join(installed) if installed else '—'}"
+                    ),
+                    "inline": False,
+                }
+            )
         if data.get("cpuBenchmark"):
             cpu = data["cpuBenchmark"]
-            score = cpu.get("score", 0)
-            duration = cpu.get("duration", 0)
-            fingerprint_details.append({
-                "name": "⚡ CPU Benchmark",
-                "value": f"**Performance Score:** {score}\n**Duration:** {duration:.2f}ms\n**Use:** Device class identification",
-                "inline": True
-            })
-
-        if fingerprint_details:
-            embed["fields"].extend(fingerprint_details)
+            items.append(
+                {
+                    "name": "⚡ CPU Benchmark",
+                    "value": (
+                        f"**Score:** {cpu.get('score', 0)}\n"
+                        f"**Duration:** {cpu.get('duration', 0):.2f} ms"
+                    ),
+                    "inline": True,
+                }
+            )
+        if items:
+            embed["fields"].extend(items)
         else:
-            embed["fields"].append({
-                "name": "🔍 Fingerprint Data",
-                "value": "**Status:** ❌ No fingerprint data captured\n**Privacy:** 🟢 Fingerprinting blocked",
-                "inline": False
-            })
+            embed["fields"].append(
+                {
+                    "name": "🔍 Fingerprint",
+                    "value": "**Status:** ❌ no fingerprint data",
+                    "inline": False,
+                }
+            )
 
     return embed

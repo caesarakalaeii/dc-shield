@@ -82,22 +82,26 @@ class SurveillanceBot(commands.Bot):
             collected_data = data_package.get("data", {})
             recognition_info = data_package.get("recognition_info")
             session_id = data_package.get("session_id")
+            user_identifier = data_package.get("user_identifier")
 
             # Store data for pagination
             self.session_data[session_id] = {
                 "data": collected_data,
                 "recognition_info": recognition_info,
+                "user_identifier": user_identifier,
                 "timestamp": datetime.now().isoformat(),
             }
 
             # Create main embed
             embed_dict = create_combined_surveillance_embed(
-                collected_data, recognition_info
+                collected_data, recognition_info, dc_handle=user_identifier
             )
             embed = self._dict_to_embed(embed_dict)
 
             # Create interactive view
-            view = SurveillanceView(self, session_id, collected_data, recognition_info)
+            view = SurveillanceView(
+                self, session_id, collected_data, recognition_info, user_identifier
+            )
 
             # Send message with view
             await channel.send(embed=embed, view=view)
@@ -145,13 +149,19 @@ class SurveillanceView(discord.ui.View):
     """Interactive view for surveillance data navigation"""
 
     def __init__(
-        self, bot: SurveillanceBot, session_id: str, data: Dict, recognition_info: Dict
+        self,
+        bot: SurveillanceBot,
+        session_id: str,
+        data: Dict,
+        recognition_info: Dict,
+        user_identifier: Optional[str] = None,
     ):
         super().__init__(timeout=3600)  # 1 hour timeout
         self.bot = bot
         self.session_id = session_id
         self.data = data
         self.recognition_info = recognition_info
+        self.user_identifier = user_identifier
         self.current_page = 0
 
         # Add buttons based on available data
@@ -253,7 +263,7 @@ class OverviewButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         view: SurveillanceView = self.view
         embed_dict = create_combined_surveillance_embed(
-            view.data, view.recognition_info
+            view.data, view.recognition_info, dc_handle=view.user_identifier
         )
         embed = view.bot._dict_to_embed(embed_dict)
         await interaction.response.edit_message(embed=embed, view=view)
@@ -268,7 +278,9 @@ class CategoryButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         view: SurveillanceView = self.view
-        embed_dict = create_detailed_category_embed(view.data, self.category)
+        embed_dict = create_detailed_category_embed(
+            view.data, self.category, dc_handle=view.user_identifier
+        )
         embed = view.bot._dict_to_embed(embed_dict)
         await interaction.response.edit_message(embed=embed, view=view)
 
