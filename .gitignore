@@ -11,3 +11,8 @@ htmlcov
 coverage.xml
 ipdb
 *.csv
+.direnv
+.pytest_cache
+*.pyc
+result
+result-*
