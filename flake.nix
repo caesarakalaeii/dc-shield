@@ -19,8 +19,12 @@
 
   outputs =
     # `...` rather than a closed { self, nixpkgs }: adding a second input later
-    # would otherwise fail with "called with unexpected argument 'self'".
-    { nixpkgs, ... }:
+    # would otherwise fail with "called with unexpected argument '<name>'".
+    #
+    # `self` is bound because the commands need it: it is the only handle a
+    # wrapper has on this repo that does not depend on the caller's cwd. See
+    # rootPreamble.
+    { self, nixpkgs, ... }:
     let
       lib = nixpkgs.lib;
 
@@ -159,10 +163,20 @@
           setup = {
             description = "(network) prefetch the ~50 MB GeoIP + ASN CSV databases into ipdb/ so `run` starts fast";
             text = ''
+              # Downloads into the tree, so it needs a real one.
+              require_work_tree
+
               # ip_locator and asn_lookup anchor their cache to
               # os.path.dirname(__file__), i.e. $REPO_ROOT/ipdb (already
               # gitignored), so this is cwd-independent -- but the modules are
               # top-level, so they only import with the repo root on the path.
+              #
+              # PYTHONSAFEPATH is the other half of that anchoring, and it is not
+              # cosmetic: `python -c` otherwise puts the process cwd FIRST on
+              # sys.path, ahead of PYTHONPATH, so a stray ip_locator.py in the
+              # caller's directory would be imported instead of this repo's and
+              # the 50 MB would land wherever that file lives. Honoured since
+              # 3.11; this interpreter is 3.13.
               #
               # Passing the stdlib `logging` module itself as the logger is not a
               # hack for its own sake: both loaders reach for l.info/l.error and
@@ -172,17 +186,36 @@
               #
               # Re-running this is cheap and safe: the loaders re-download only
               # when the cached CSVs are stale.
-              PYTHONPATH="$REPO_ROOT''${PYTHONPATH:+:$PYTHONPATH}" \
+              PYTHONSAFEPATH=1 PYTHONPATH="$REPO_ROOT''${PYTHONPATH:+:$PYTHONPATH}" \
                 "${py}" -c 'import logging, ip_locator, asn_lookup; logging.basicConfig(level=logging.INFO, format="%(message)s"); ip_locator.set_logger(logging); asn_lookup.set_logger(logging); ip_locator._load_db(); asn_lookup._load_db()' "$@"
             '';
           };
           test = {
             description = "run the pytest suite (offline; integration tests deselected by pytest.ini)";
-            # Deliberately no `cd "$REPO_ROOT"`. pytest finds pytest.ini by
-            # walking up from its arguments, so the suite runs correctly from a
-            # subdirectory anyway, and cd'ing would break the far more common
-            # `dev-test tests/test_smoke.py` with a relative path.
-            text = ''"${py}" -m pytest "$@"'';
+            text = ''
+              # Writes .coverage, htmlcov/ and .pytest_cache, all cwd-relative.
+              require_work_tree
+
+              # This verb DOES cd, and every clause of that is load-bearing.
+              # An earlier revision argued the opposite -- that pytest finds
+              # pytest.ini by walking up from its arguments, so no cd is needed
+              # -- and each half of that was wrong in practice:
+              #   * With no arguments there are no arguments to walk up from.
+              #     pytest then collects from cwd, so `nix run <url>#test` from
+              #     an unrelated directory collected the CALLER's tests and
+              #     printed "1 passed" while these 141 never ran. A false green.
+              #   * rootdir came out as the caller's directory too, so pytest.ini
+              #     never applied: asyncio_mode fell back to strict and the --cov
+              #     addopts vanished. The suite silently changed shape.
+              #   * .coverage, htmlcov/ and .pytest_cache are written relative to
+              #     cwd, and .gitignore only covers them at the repo root.
+              # The price, stated plainly: path arguments are now relative to the
+              # repo root rather than to where you typed the command. `dev-test
+              # tests/test_main.py` works from anywhere; `dev-test ../foo.py`
+              # does not.
+              cd "$REPO_ROOT"
+              "${py}" -m pytest "$@"
+            '';
           };
           lint = {
             description = "flake8 static analysis (the pristine tree already reports 43 findings, so exit 1 is normal)";
@@ -199,6 +232,14 @@
               #
               # Do NOT "fix" this by deleting --isolated. Fix .flake8 in its own
               # commit, then delete these flags and let the file win again.
+              #
+              # The default target is the repo, never the caller's cwd -- a gate
+              # that passes by inspecting a stranger's files is worse than no
+              # gate. No cd and no require_work_tree here though: flake8 only
+              # reads, and pointing it at the read-only store copy of this
+              # flake's source (what REPO_ROOT resolves to when the command is
+              # run by URL from outside a checkout) yields the same 43 findings
+              # as the work tree does, because that copy IS the tracked tree.
               if [ "$#" -eq 0 ]; then set -- "$REPO_ROOT"; fi
               "${flake8}" \
                 --isolated \
@@ -217,13 +258,27 @@
               # --diff .` compares against. Note .flake8 claims line length is
               # "handled by black" at 127 -- it is not; black is at 88 and that
               # disagreement is pre-existing.
-              if [ "$#" -eq 0 ]; then set -- "$REPO_ROOT"; fi
+              #
+              # This verb REWRITES files, so its default target is the one thing
+              # in the flake that must not be guessed: with cwd as the default,
+              # `nix run /path/to/dc-shield#fmt` from an unrelated directory
+              # reformatted that directory's Python. Explicit arguments are still
+              # honoured verbatim, still resolved against the caller's cwd, and
+              # deliberately skip the work-tree guard -- a typed-out path is an
+              # instruction, not a default.
+              if [ "$#" -eq 0 ]; then
+                require_work_tree
+                set -- "$REPO_ROOT"
+              fi
               "${black}" "$@"
             '';
           };
           run = {
             description = "(network on first start) serve the Quart/Hypercorn honeypot on 0.0.0.0; run `setup` first to avoid a ~60s DB download";
             text = ''
+              # Writes logs/ into the tree, so it needs a real one.
+              require_work_tree
+
               # main.py resolves $CONFIG_PATH against the process cwd and defaults
               # it to a bare "config.json", so an unanchored launch from a
               # subdirectory silently misses the config and falls through to the
@@ -234,12 +289,13 @@
               # config/config_template.json to it first (app_port lives there).
               export CONFIG_PATH="''${CONFIG_PATH:-$REPO_ROOT/config.json}"
 
-              # This is the ONE command that cds, and only because main.py builds
-              # its Logger with the cwd-relative path "logs/log1.txt". Without the
-              # cd, launching from a subdirectory scatters half-written logs/
-              # directories through the work tree, and only the root one is
-              # gitignored. Safe here in a way it would not be for test/lint/fmt:
-              # the server takes no path arguments to resolve against the caller.
+              # cd, because main.py builds its Logger with the cwd-relative path
+              # "logs/log1.txt". Without it, launching from anywhere else scatters
+              # half-written logs/ directories outside the repo, and .gitignore
+              # only covers the one at the root. Cheaper here than anywhere else:
+              # the server takes no path arguments to resolve against the caller,
+              # so nothing about the cd can surprise the caller (`test` pays a
+              # real price for it; `lint` and `fmt` do not cd at all).
               cd "$REPO_ROOT"
               exec "${py}" main.py "$@"
             '';
@@ -260,14 +316,76 @@
           export LD_LIBRARY_PATH="${lib.makeLibraryPath (nativeLibs pkgs)}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         '';
 
-      # Every command gets $REPO_ROOT. `nix run` and `nix develop` both start in
-      # whatever directory they were invoked from, so a bare relative path
-      # silently forks a second environment as soon as an agent works from a
-      # subdirectory. Note we do NOT cd there: commands act on the caller's cwd
-      # on purpose.
+      # Every command gets $REPO_ROOT, and it must name THIS repo no matter what
+      # directory the caller was standing in when they typed the command.
+      #
+      # The obvious `git rev-parse --show-toplevel 2>/dev/null || pwd` does NOT
+      # do that, and shipping it was a real bug, reproduced rather than
+      # theorised: the git call runs in the CALLER's cwd, and
+      # `nix run /path/to/dc-shield#<verb>` -- the form CI and a cold agent use
+      # -- runs wherever they happen to be. From an unrelated directory
+      # dev-lint then reported 5 findings on a stranger's files instead of this
+      # repo's 43, dev-test collected the stranger's tests and printed a
+      # cheerful "1 passed" while these 141 never ran, and dev-fmt REWROTE that
+      # stranger's Python.
+      #
+      # So the anchor is ${self}: this flake's own source, resolved by Nix at
+      # evaluation time, immutable, and independent of cwd by construction.
+      #
+      # The live work tree is preferred over that store copy when -- and only
+      # when -- the caller really is inside a checkout of this same source,
+      # because that is the case where writes have to land in real files rather
+      # than in the read-only store. Identity is settled by comparing flake.nix
+      # byte for byte: the `description` at the top of this file is unique per
+      # repo, so no sibling repo in the fleet can impersonate this one. (They
+      # share flake.lock verbatim, which is exactly why the lock would be a
+      # useless fingerprint.) The comparison is bash's own $(< ...) rather than
+      # cmp or diff so that it needs nothing on PATH.
+      #
+      # An inherited $REPO_ROOT wins over both. That is the documented escape
+      # hatch for the case neither rule covers --
+      # `REPO_ROOT=~/src/dc-shield nix run github:caesarakalaeii/dc-shield#fmt`
+      # -- and it is also what lets the dev shell resolve the root once and hand
+      # it down to every dev-* it spawns.
       rootPreamble = ''
-        REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        if [ -z "''${REPO_ROOT:-}" ]; then
+          REPO_ROOT="${self}"
+          _dev_tree="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+          if [ -n "$_dev_tree" ] && [ -f "$_dev_tree/flake.nix" ] &&
+            [ "$(<"$_dev_tree/flake.nix")" = "$(<"${self}/flake.nix")" ]; then
+            REPO_ROOT="$_dev_tree"
+          fi
+          unset _dev_tree
+        fi
         export REPO_ROOT
+      '';
+
+      # Interpolated into every wrapper, called by the verbs that WRITE inside
+      # the tree (setup, test, fmt, run). When REPO_ROOT resolved to the
+      # immutable ${self} copy -- `nix run` by URL from outside any checkout --
+      # there is nothing writable to act on. Letting the tool discover that for
+      # itself yields a bare EACCES from somewhere inside black or coverage,
+      # which a caller then has to reverse-engineer; fail here instead, before a
+      # single file is touched, and name both ways out.
+      #
+      # The read-only verb (lint) deliberately does NOT call this: linting the
+      # store copy from an arbitrary cwd is precisely the CI behaviour we want,
+      # and it reports the same findings as the work tree because that copy IS
+      # the tracked tree.
+      #
+      # Written as an `if` rather than `[ -w ... ] && return 0`, because under
+      # `set -o errexit` a failing && list at function scope kills the wrapper
+      # with a silent exit 1 before it can print anything.
+      workTreeGuard = ''
+        require_work_tree() {
+          if [ -w "$REPO_ROOT" ]; then
+            return 0
+          fi
+          echo "REPO_ROOT is $REPO_ROOT," >&2
+          echo "this flake's read-only source rather than a work tree -- and this command writes." >&2
+          echo "Run it from inside a dc-shield checkout, or pass REPO_ROOT=/path/to/dc-shield." >&2
+          exit 1
+        }
       '';
 
       # One derivation per command, reused by both `apps` and the dev shell, so
@@ -285,6 +403,7 @@
             meta.description = cmd.description;
             text = ''
               ${rootPreamble}
+              ${workTreeGuard}
               ${ldPreamble pkgs}
               ${cmd.text}
             '';
